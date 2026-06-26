@@ -1,0 +1,14 @@
+# Optional visual/OCR/OCSR dependencies.
+#
+# DECIMER Segmentation upstream recommends a separate Python 3.10 conda env:
+#   conda create -n DECIMER_IMGSEG python=3.10
+#   conda activate DECIMER_IMGSEG
+#   pip install -r requirements-visual.txt
+#
+# Keep these out of requirements.txt because they are heavy and can conflict
+# with the lightweight FastAPI/scraper environment.
+
+numpy<2
+decimer-segmentation
+MolScribe
+huggingface_hub

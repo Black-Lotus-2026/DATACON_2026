@@ -29,6 +29,90 @@ uvicorn app.main:app --reload
 http://127.0.0.1:8000
 ```
 
+## Scraper MVP
+
+Первый слой scraper'а сохраняет PDF-разбор в SQLite: страницы, evidence-блоки,
+caption'ы, таблицы, строки таблиц и FTS5-индекс для текстового поиска.
+Подробная карта пайплайна лежит в `docs/scraper.md`.
+
+```bash
+source .venv/bin/activate
+python -m app.services.scraper pdf-dataset/antibiotics-12-01220-v2.pdf \
+  --out runs/scrape-antibiotics \
+  --doc-id antibiotics_1220
+```
+
+Главный артефакт:
+
+```text
+runs/scrape-antibiotics/scrape.sqlite
+runs/scrape-antibiotics/tables/*.csv
+runs/scrape-antibiotics/images/figures/*.png
+runs/scrape-antibiotics/visual_tasks.csv
+```
+
+Быстрые проверки:
+
+```bash
+sqlite3 runs/scrape-antibiotics/scrape.sqlite \
+  "select source_type, count(*) from evidence_blocks group by source_type;"
+
+sqlite3 runs/scrape-antibiotics/scrape.sqlite \
+  "select page_number, label, substr(caption, 1, 100) from tables limit 10;"
+
+sqlite3 runs/scrape-antibiotics/scrape.sqlite \
+  "select source_type, substr(text, 1, 180) from evidence_fts where evidence_fts match 'antibio*' limit 5;"
+
+sqlite3 runs/scrape-antibiotics/scrape.sqlite \
+  "select priority, task_type, provider_hint, page_number, reason from visual_tasks order by priority desc limit 20;"
+```
+
+Structure detection executor:
+
+```bash
+python -m app.services.scraper.visual_executor \
+  runs/scrape-antibiotics/scrape.sqlite \
+  --provider heuristic
+```
+
+SOTA/optional DECIMER Segmentation provider:
+
+```bash
+conda create -n DECIMER_IMGSEG python=3.10
+conda activate DECIMER_IMGSEG
+pip install -r requirements-visual.txt
+python -m app.services.scraper.visual_executor \
+  runs/scrape-antibiotics/scrape.sqlite \
+  --provider decimer
+```
+
+Structure crops and debug overlays:
+
+```text
+runs/scrape-antibiotics/images/structures/**/structure_*.png
+runs/scrape-antibiotics/images/structures/**/_detections.png
+```
+
+OCSR executor over detected structure crops:
+
+```bash
+python -m app.services.scraper.ocsr_executor \
+  runs/scrape-antibiotics/scrape.sqlite \
+  --provider molscribe \
+  --device cpu \
+  --min-confidence 0.5
+```
+
+It writes recognized SMILES back to `structure_detections.smiles` and creates
+RAG-ready `chemical_structure_smiles` evidence blocks. Scheme fragments are
+kept with quality flags in metadata, so downstream extraction can treat
+wildcards/R-groups separately from complete molecules.
+
+```bash
+sqlite3 runs/scrape-antibiotics/scrape.sqlite \
+  "select parent_figure_id, smiles, image_path from structure_detections where smiles is not null limit 10;"
+```
+
 ## API
 
 - `GET /` - страница загрузки.
