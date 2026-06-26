@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Real-time pipeline | DataCon'26 ChemX{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Live processing</p>
+    <h1>Подгрузка в реальном времени</h1>
+  </div>
+  <div class="header-actions">
+    <select class="select compact" id="live-domain">
+      {% for domain in domains %}
+      <option value="{{ domain.name }}" {% if domain.name == "Benzimidazoles" %}selected{% endif %}>{{ domain.name }}</option>
+      {% endfor %}
+    </select>
+    <button class="button button-primary" id="start-demo" type="button">Демо-поток</button>
+  </div>
+</section>
+
+<section class="live-grid">
+  <div class="live-main">
+    <div class="run-card">
+      <div class="run-header">
+        <div>
+          <p class="eyebrow">Current run</p>
+          <h2 id="run-title">Нет активного запуска</h2>
+        </div>
+        <span class="run-status" id="run-status">idle</span>
+      </div>
+      <div class="progress-track" aria-label="Pipeline progress">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-meta">
+        <span id="stage-label">Ожидание</span>
+        <strong id="progress-value">0%</strong>
+      </div>
+      <div class="run-actions">
+        <a class="button button-secondary is-disabled" id="export-csv" href="#" aria-disabled="true">CSV</a>
+        <a class="button button-secondary is-disabled" id="export-json" href="#" aria-disabled="true">JSON</a>
+        <button class="button button-ghost" id="cancel-run" type="button">Остановить</button>
+      </div>
+    </div>
+
+    <div class="stage-list" id="stage-list"></div>
+
+    <div class="source-card">
+      <div class="section-heading">
+        <p class="eyebrow">Source profile</p>
+        <h2>Источник</h2>
+      </div>
+      <div class="source-grid" id="source-grid"></div>
+    </div>
+
+    <div class="table-shell">
+      <div class="section-heading">
+        <p class="eyebrow">Extracted records</p>
+        <h2>Структурированные данные</h2>
+      </div>
+      <div class="responsive-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Object ID</th>
+              <th>Value</th>
+              <th>Property</th>
+              <th>Evidence</th>
+              <th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody id="records-body">
+            <tr><td colspan="5">Запустите обработку, чтобы увидеть результат.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="table-shell">
+      <div class="section-heading">
+        <p class="eyebrow">Field metrics</p>
+        <h2>Precision / Recall / F1 по полям</h2>
+      </div>
+      <div class="responsive-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Precision</th>
+              <th>Recall</th>
+              <th>F1</th>
+            </tr>
+          </thead>
+          <tbody id="field-metrics-body">
+            <tr><td colspan="4">Метрики появятся после evaluation.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <aside class="live-side">
+    <div class="metric-stack">
+      <div class="mini-metric">
+        <span>Precision</span>
+        <strong id="metric-precision">-</strong>
+      </div>
+      <div class="mini-metric">
+        <span>Recall</span>
+        <strong id="metric-recall">-</strong>
+      </div>
+      <div class="mini-metric">
+        <span>Macro-F1</span>
+        <strong id="metric-macro">-</strong>
+      </div>
+    </div>
+
+    <div class="log-panel">
+      <div class="section-heading">
+        <p class="eyebrow">Runs</p>
+        <h2>История</h2>
+      </div>
+      <div class="history-list" id="history-list"></div>
+    </div>
+
+    <div class="log-panel">
+      <div class="section-heading">
+        <p class="eyebrow">Events</p>
+        <h2>Журнал</h2>
+      </div>
+      <ul id="log-list" class="log-list"></ul>
+    </div>
+  </aside>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/realtime.js') }}"></script>
+{% endblock %}

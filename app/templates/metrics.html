@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Метрики | DataCon'26 ChemX{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Evaluation</p>
+    <h1>Метрики ChemX</h1>
+  </div>
+  <a class="button button-secondary" href="/">Новая загрузка</a>
+</section>
+
+<section class="summary-grid" id="summary-grid">
+  <div class="summary-card">
+    <span>Tracked domains</span>
+    <strong id="tracked-domains">-</strong>
+  </div>
+  <div class="summary-card">
+    <span>Completed runs</span>
+    <strong id="completed-runs">-</strong>
+  </div>
+  <div class="summary-card">
+    <span>Total rows</span>
+    <strong id="total-rows">-</strong>
+  </div>
+  <div class="summary-card">
+    <span>Avg baseline</span>
+    <strong id="avg-baseline">-</strong>
+  </div>
+  <div class="summary-card accent">
+    <span>Avg projected</span>
+    <strong id="avg-projected">-</strong>
+  </div>
+</section>
+
+<section class="metrics-layout">
+  <div class="chart-panel">
+    <div class="section-heading">
+      <p class="eyebrow">Macro-F1</p>
+      <h2>Baseline vs current run</h2>
+    </div>
+    <div class="bar-chart" id="bar-chart"></div>
+  </div>
+
+  <div class="table-shell">
+    <div class="section-heading">
+      <p class="eyebrow">Domain detail</p>
+      <h2>Precision / Recall / F1</h2>
+    </div>
+    <div class="responsive-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th>Track</th>
+            <th>Rows</th>
+            <th>Baseline</th>
+            <th>Current</th>
+            <th>Delta</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="metrics-body"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/metrics.js') }}"></script>
+{% endblock %}

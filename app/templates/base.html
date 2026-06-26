@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}DataCon'26 ChemX{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/styles.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary">
+      <a class="brand" href="/">
+        <span class="brand-mark">Cx</span>
+        <span>
+          <strong>DataCon'26</strong>
+          <small>ChemX extractor</small>
+        </span>
+      </a>
+      <nav class="nav-list">
+        <a class="nav-item {% if active == 'upload' %}is-active{% endif %}" href="/">
+          <span class="nav-icon">U</span>
+          <span>Загрузка</span>
+        </a>
+        <a class="nav-item {% if active == 'realtime' %}is-active{% endif %}" href="/realtime">
+          <span class="nav-icon">R</span>
+          <span>Real-time</span>
+        </a>
+        <a class="nav-item {% if active == 'metrics' %}is-active{% endif %}" href="/metrics">
+          <span class="nav-icon">M</span>
+          <span>Метрики</span>
+        </a>
+      </nav>
+      <div class="sidebar-note">
+        <span class="status-dot"></span>
+        <span>FastAPI ready</span>
+      </div>
+    </aside>
+
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>
+

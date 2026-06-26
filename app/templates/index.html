@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Загрузка датасета | DataCon'26 ChemX{% endblock %}
+
+{% block content %}
+<section class="hero-grid">
+  <div class="hero-copy">
+    <p class="eyebrow">ChemX extraction workspace</p>
+    <h1>Загрузка статьи или датасета для химической экстракции</h1>
+    <p class="hero-text">PDF, CSV, TSV или текст проходят один и тот же контур: ingest, preprocessing, image evidence, extraction и оценка по Macro-F1.</p>
+    <div class="hero-actions">
+      <a class="button button-primary" href="#upload-panel">Загрузить файл</a>
+      <a class="button button-secondary" href="/metrics">Открыть метрики</a>
+    </div>
+  </div>
+  <div class="hero-media" aria-label="ChemX pipeline visual">
+    <img src="{{ url_for('static', path='/assets/chemx-pipeline-hero.png') }}" alt="Scientific extraction interface with PDF papers, molecules and metrics">
+  </div>
+</section>
+
+<section class="upload-layout" id="upload-panel">
+  <form class="upload-panel" id="upload-form">
+    <div class="section-heading">
+      <p class="eyebrow">Input</p>
+      <h2>Dataset upload</h2>
+    </div>
+
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload dataset file">
+      <input id="dataset-file" name="dataset" type="file" accept=".pdf,.csv,.tsv,.zip,.txt,.md" hidden>
+      <div class="drop-icon">+</div>
+      <strong id="file-name">Выберите PDF, CSV, TSV, TXT, MD или ZIP</strong>
+      <span id="file-meta">ChemX article, table export, text source or packaged dataset</span>
+    </div>
+
+    <label class="field-label" for="domain-select">Домен ChemX</label>
+    <select class="select" id="domain-select" name="domain">
+      {% for domain in domains %}
+      <option value="{{ domain.name }}" {% if domain.name == "Benzimidazoles" %}selected{% endif %}>
+        {{ domain.name }} · {{ domain.track }}
+      </option>
+      {% endfor %}
+    </select>
+
+    <div class="button-row">
+      <button class="button button-primary" type="submit">Запустить пайплайн</button>
+      <button class="button button-ghost" id="demo-button" type="button">Демо-поток</button>
+    </div>
+    <p class="form-state" id="upload-state"></p>
+  </form>
+
+  <div class="domain-panel">
+    <div class="section-heading">
+      <p class="eyebrow">ChemX domains</p>
+      <h2>Покрытие задачи</h2>
+    </div>
+    <div class="domain-grid">
+      {% for domain in domains %}
+      <article class="domain-tile" data-domain="{{ domain.name }}">
+        <div>
+          <strong>{{ domain.name }}</strong>
+          <span>{{ domain.track }}</span>
+        </div>
+        <em>{{ "{:,}".format(domain.size).replace(",", " ") }} rows</em>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/app.js') }}"></script>
+{% endblock %}
