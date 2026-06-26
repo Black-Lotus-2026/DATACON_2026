@@ -113,6 +113,61 @@ sqlite3 runs/scrape-antibiotics/scrape.sqlite \
   "select parent_figure_id, smiles, image_path from structure_detections where smiles is not null limit 10;"
 ```
 
+## Single-agent checker
+
+Для текущего MVP можно проверить упрощённый контур без второго агента:
+
+```text
+PDF -> scraper -> structured SQLite evidence -> checker agent -> reports
+```
+
+```bash
+python -m app.services.agent pdf-dataset/antibiotics-12-01220-v2.pdf \
+  --out runs/agent-antibiotics \
+  --domain Benzimidazoles \
+  --doc-id antibiotics_1220
+```
+
+Checker использует локальные prompt-skill templates из ChemX:
+
+```text
+app/services/agent/skills/chemx_prompts/
+```
+
+Для реального LLM-вызова через VseGPT создайте локальный `.env`:
+
+```bash
+cp .env.example .env
+```
+
+```text
+VSEGPT_API_KEY=sk-...
+VSEGPT_BASE_URL=https://api.vsegpt.ru/v1
+VSEGPT_MODEL=openai/gpt-4o-mini
+```
+
+И запустите агент с `--run-llm`:
+
+```bash
+python -m app.services.agent runs/agent-antibiotics/scrape/scrape.sqlite \
+  --out runs/agent-antibiotics/agent_check \
+  --domain Benzimidazoles \
+  --run-llm
+```
+
+Артефакты:
+
+```text
+runs/agent-antibiotics/scrape/scrape.sqlite
+runs/agent-antibiotics/agent_check/agent_report.json
+runs/agent-antibiotics/agent_check/agent_report.md
+runs/agent-antibiotics/agent_check/candidate_evidence.jsonl
+runs/agent-antibiotics/agent_check/llm_result.json
+runs/agent-antibiotics/agent_check/llm_raw.txt
+```
+
+Подробности: `docs/agent_checker.md`.
+
 ## API
 
 - `GET /` - страница загрузки.
