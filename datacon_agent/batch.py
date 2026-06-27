@@ -9,6 +9,7 @@ from datacon_agent.agent import AgentSettings, ChemExtractionAgent
 from datacon_agent.domains import NOT_DETECTED, DomainSpec
 from datacon_agent.normalize import finalize_samples, pdf_identifier, samples_to_frame
 from datacon_agent.pdf import load_pdf
+from datacon_agent.scraper_context import scrape_pdf_to_document
 
 
 def extract_pdf_dir(
@@ -17,6 +18,9 @@ def extract_pdf_dir(
     output_path: str | Path,
     *,
     settings: AgentSettings,
+    use_scraper: bool = False,
+    scraper_dir: str | Path | None = None,
+    overwrite_scrape: bool = False,
 ) -> Path:
     directory = Path(pdf_dir)
     pdfs = sorted(path for path in directory.iterdir() if path.suffix.lower() == ".pdf")
@@ -24,7 +28,17 @@ def extract_pdf_dir(
     agent = ChemExtractionAgent(domain, settings=settings)
 
     for pdf_path in tqdm(pdfs, desc=f"Extract {domain.key}"):
-        samples = agent.extract_pdf(pdf_path)
+        if use_scraper:
+            document = scrape_pdf_to_document(
+                pdf_path,
+                scraper_dir=scraper_dir,
+                overwrite=overwrite_scrape,
+                render_pages=settings.render_pages,
+                dpi=settings.page_dpi,
+            )
+            samples = agent.extract_document(document)
+        else:
+            samples = agent.extract_pdf(pdf_path)
         frames.append(samples_to_frame(domain, samples, pdf_name=pdf_path.name))
 
     output = Path(output_path)
@@ -44,6 +58,9 @@ def review_prediction_csv(
     *,
     settings: AgentSettings,
     passes: int = 1,
+    use_scraper: bool = False,
+    scraper_dir: str | Path | None = None,
+    overwrite_scrape: bool = False,
 ) -> Path:
     directory = Path(pdf_dir)
     pdfs = sorted(path for path in directory.iterdir() if path.suffix.lower() == ".pdf")
@@ -57,7 +74,16 @@ def review_prediction_csv(
         for pdf_path in tqdm(pdfs, desc=desc):
             pdf_id = pdf_identifier(domain, pdf_path.name)
             candidates = rows_for_pdf(predictions, domain, pdf_id)
-            document = load_pdf(pdf_path, render_pages=False)
+            if use_scraper:
+                document = scrape_pdf_to_document(
+                    pdf_path,
+                    scraper_dir=scraper_dir,
+                    overwrite=overwrite_scrape and pass_index == 0,
+                    render_pages=False,
+                    dpi=settings.page_dpi,
+                )
+            else:
+                document = load_pdf(pdf_path, render_pages=False)
             reviewed = agent.review(candidates, document=document)
             rows = finalize_samples(domain, reviewed)
             frames.append(samples_to_frame(domain, rows, pdf_name=pdf_path.name))

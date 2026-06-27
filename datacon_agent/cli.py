@@ -13,6 +13,7 @@ from datacon_agent.domains import DOMAINS, get_domain
 from datacon_agent.metrics import evaluate_predictions, macro_f1, read_article_ids
 from datacon_agent.normalize import write_csv
 from datacon_agent.schema import structured_output_schema
+from datacon_agent.scraper_context import DEFAULT_SCRAPER_DIR, scrape_pdf_to_document
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -35,12 +36,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     extract = subparsers.add_parser("extract", help="Extract one PDF into ChemX-style CSV")
     add_agent_args(extract)
+    add_scraper_args(extract)
     extract.add_argument("--pdf", required=True, help="Path to article PDF")
     extract.add_argument("--out", required=True, help="Output CSV path")
     extract.set_defaults(func=cmd_extract)
 
     batch = subparsers.add_parser("batch", help="Extract every PDF in a directory")
     add_agent_args(batch)
+    add_scraper_args(batch)
     batch.add_argument("--pdf-dir", required=True, help="Directory with PDF files")
     batch.add_argument("--out", required=True, help="Output CSV path")
     batch.set_defaults(func=cmd_batch)
@@ -50,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Refine a prediction CSV with article-level text context",
     )
     add_agent_args(review_csv)
+    add_scraper_args(review_csv)
     review_csv.add_argument("--pred", required=True, help="Candidate prediction CSV")
     review_csv.add_argument("--pdf-dir", required=True, help="Directory with matching PDF files")
     review_csv.add_argument("--out", required=True, help="Reviewed output CSV path")
@@ -99,6 +103,24 @@ def add_agent_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_scraper_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--use-scraper",
+        action="store_true",
+        help="Run the local SQLite evidence scraper before calling the LLM agent",
+    )
+    parser.add_argument(
+        "--scraper-dir",
+        default=str(DEFAULT_SCRAPER_DIR),
+        help="Directory for scraper run artifacts",
+    )
+    parser.add_argument(
+        "--overwrite-scrape",
+        action="store_true",
+        help="Rebuild scrape.sqlite even when a cached scrape exists",
+    )
+
+
 def settings_from_args(args: argparse.Namespace) -> AgentSettings:
     return AgentSettings(
         model=args.model,
@@ -128,14 +150,32 @@ def cmd_schema(args: argparse.Namespace) -> None:
 def cmd_extract(args: argparse.Namespace) -> None:
     domain = get_domain(args.domain)
     agent = ChemExtractionAgent(domain, settings=settings_from_args(args))
-    samples = agent.extract_pdf(args.pdf)
+    if args.use_scraper:
+        document = scrape_pdf_to_document(
+            args.pdf,
+            scraper_dir=args.scraper_dir,
+            overwrite=args.overwrite_scrape,
+            render_pages=agent.settings.render_pages,
+            dpi=agent.settings.page_dpi,
+        )
+        samples = agent.extract_document(document)
+    else:
+        samples = agent.extract_pdf(args.pdf)
     output = write_csv(domain, samples, args.out, pdf_name=Path(args.pdf).name)
     print(f"Wrote {len(samples)} rows to {output}")
 
 
 def cmd_batch(args: argparse.Namespace) -> None:
     domain = get_domain(args.domain)
-    output = extract_pdf_dir(domain, args.pdf_dir, args.out, settings=settings_from_args(args))
+    output = extract_pdf_dir(
+        domain,
+        args.pdf_dir,
+        args.out,
+        settings=settings_from_args(args),
+        use_scraper=args.use_scraper,
+        scraper_dir=args.scraper_dir,
+        overwrite_scrape=args.overwrite_scrape,
+    )
     print(f"Wrote batch CSV to {output}")
 
 
@@ -150,6 +190,9 @@ def cmd_review_csv(args: argparse.Namespace) -> None:
         args.out,
         settings=settings,
         passes=args.passes,
+        use_scraper=args.use_scraper,
+        scraper_dir=args.scraper_dir,
+        overwrite_scrape=args.overwrite_scrape,
     )
     print(f"Wrote reviewed CSV to {output}")
 

@@ -220,6 +220,12 @@ python -m datacon_agent.cli evaluate \
 против `0.349333` у baseline. Для официальной оценки нужно догрузить все
 доступные PDF/SI и прогнать тот же evaluator по полному article subset.
 
+Опционально можно прогонять тот же контур через SQLite evidence scraper:
+добавьте к `batch` и `review-csv` флаги `--use-scraper --scraper-dir
+runs/datacon_agent_scrapes`. На текущей 9-PDF Nanozymes подвыборке полный
+scraper-first режим дал Macro-F1 `0.587566`, поэтому он оставлен как
+проверяемый evidence/RAG режим, а не как default для лучшего score.
+
 ## Multi-agent chemical image pipeline
 
 Для анализа научных схем и отдельного chemical OCR добавлен контур:
