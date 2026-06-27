@@ -1,5 +1,79 @@
 # DataCon'26 — Финальная задача
 
+## Решение в этой ветке
+
+Ветка `agent-improvements` добавляет воспроизводимый schema-driven агент для ChemX:
+
+- PDF препроцессинг через PyMuPDF: текст, таблицы и рендер страниц для vision-модели.
+- Multi-pass LLM extraction: кандидаты по окнам страниц, затем review-pass без article-specific правил.
+- CSV нормализация под ChemX evaluator, включая доменные имена колонок и формат `pdf`.
+- CLI для одиночных PDF, батча, схем и метрик.
+- Streamlit UI для загрузки PDF и просмотра результата.
+
+Ограничения соблюдены: в extraction pipeline нет regex-правил и нет подгонки под отдельные статьи или ответы. Доменные настройки описывают только публичный контракт ChemX: поля, типы и общую задачу домена.
+
+### Быстрый запуск
+
+```bash
+uv sync --extra web --extra eval --extra dev
+export OPENAI_API_KEY=...
+export OPENAI_BASE_URL=https://caila.io/api/adapters/openai  # for Caila/OpenAI-compatible backends
+```
+
+Один PDF:
+
+```bash
+uv run datacon-agent download-pdfs \
+  --domain nanozymes \
+  --out-dir data/pdfs/nanozymes \
+  --limit 5
+
+uv run datacon-agent extract \
+  --domain nanozymes \
+  --pdf data/pdfs/nanozymes/5416963.pdf \
+  --out outputs/nanozymes_pred.csv \
+  --model just-ai/openai-proxy/gpt-4.1
+```
+
+Папка PDF:
+
+```bash
+uv run datacon-agent batch \
+  --domain synergy \
+  --pdf-dir data/pdfs/synergy \
+  --out outputs/synergy_pred.csv
+```
+
+Метрика ChemX на Hugging Face truth:
+
+```bash
+uv run datacon-agent evaluate \
+  --domain nanozymes \
+  --pred outputs/nanozymes_pred.csv \
+  --out outputs/metrics_nanozymes.csv
+```
+
+Веб-интерфейс:
+
+```bash
+uv run datacon-agent web
+```
+
+Практические параметры для качества:
+
+- `--pages-per-window 3` или `4` обычно даёт хороший баланс полноты и контекста.
+- Оставляйте page images включёнными: много значений в ChemX живёт в таблицах, фигурах и схемах.
+- Для дешёвого dry run используйте `--max-pages 2 --no-review`, но финальную метрику считайте с review-pass.
+
+### Текущие локальные результаты
+
+На автоматически скачанных через OpenAlex open-access PDF для `nanozymes`:
+
+- 5 PDF smoke subset: agent Macro-F1 `0.625`, single-agent на тех же article ids `0.349`.
+- 9 PDF subset: agent Macro-F1 `0.451`, single-agent на тех же article ids `0.291`.
+
+Это не официальный полный прогон ChemX: скачать удалось только часть open-access PDF, а часть supplementary недоступна автоматически. Команды и CSV лежат в `outputs/` локально.
+
 ## 🧪 О проекте
 
 Финальная задача DataCon'26 посвящена **автоматической экстракции химических данных из научной литературы**.
