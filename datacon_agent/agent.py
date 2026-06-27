@@ -26,6 +26,7 @@ class AgentSettings:
     max_image_pages_per_window: int = 4
     page_dpi: int = 160
     review_candidates: bool = True
+    review_context_chars: int = 60_000
     max_pages: int | None = None
 
 
@@ -74,7 +75,7 @@ class ChemExtractionAgent:
         if not self.settings.review_candidates:
             return finalize_samples(self.domain, {"samples": candidates})
 
-        reviewed = self.review(candidates, pdf_name=document.pdf_path.name)
+        reviewed = self.review(candidates, document=document)
         return finalize_samples(self.domain, reviewed)
 
     def extract_window(
@@ -102,8 +103,8 @@ class ChemExtractionAgent:
             schema_name=f"{self.domain.key}_candidate_rows",
         )
 
-    def review(self, candidates: list[dict[str, Any]], *, pdf_name: str) -> dict[str, Any]:
-        review_prompt = self.review_prompt(candidates, pdf_name=pdf_name)
+    def review(self, candidates: list[dict[str, Any]], *, document: DocumentContext) -> dict[str, Any]:
+        review_prompt = self.review_prompt(candidates, document=document)
         return self.chat_json(
             model=self.settings.review_model or self.settings.model,
             messages=[
@@ -202,13 +203,15 @@ class ChemExtractionAgent:
             f"{page_text}"
         )
 
-    def review_prompt(self, candidates: list[dict[str, Any]], *, pdf_name: str) -> str:
+    def review_prompt(self, candidates: list[dict[str, Any]], *, document: DocumentContext) -> str:
         candidate_json = json.dumps({"samples": candidates}, ensure_ascii=False, indent=2)
+        context_text = self.review_context(document)
         return (
-            f"PDF: {pdf_name}\n"
+            f"PDF: {document.pdf_path.name}\n"
             f"Domain: {self.domain.title}\n"
             f"Task: {self.domain.task}\n\n"
             "You are reviewing candidate extraction rows produced from page windows of one article. "
+            "The article text and tables below may contain missing conditions or kinetic values. "
             "Return the final extraction table.\n\n"
             "Fields:\n"
             f"{fields_markdown(self.domain)}\n\n"
@@ -221,9 +224,20 @@ class ChemExtractionAgent:
             "- Preserve exact strings and units from the candidates unless a field name or missing marker needs normalization.\n"
             f"- Use {NOT_DETECTED!r} for unresolved missing values.\n"
             "- Remove helper fields such as _evidence and _page from the final JSON.\n\n"
+            f"{context_text}"
             "Candidate rows:\n"
             f"{candidate_json}"
         )
+
+    def review_context(self, document: DocumentContext) -> str:
+        limit = self.settings.review_context_chars
+        if limit <= 0:
+            return ""
+        context = "\n\n".join(page.as_text() for page in document.pages)
+        if len(context) > limit:
+            context = context[:limit].rsplit("\n", 1)[0]
+            context += "\n\n[article context truncated]"
+        return "Article text and tables:\n" f"{context}\n\n"
 
     def domain_guidance(self) -> str:
         if not self.domain.guidance:

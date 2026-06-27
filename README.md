@@ -187,25 +187,36 @@ python -m datacon_agent.cli download-pdfs \
 python -m datacon_agent.cli batch \
   --domain nanozymes \
   --pdf-dir data/pdfs/nanozymes \
-  --out outputs/nanozymes_gpt41.csv \
+  --out outputs/nanozymes_gpt41_candidates.csv \
   --model just-ai/openai-proxy/gpt-4.1 \
   --review-model just-ai/openai-proxy/gpt-4.1 \
   --pages-per-window 5 \
-  --max-image-pages-per-window 3
+  --max-image-pages-per-window 3 \
+  --review-context-chars 60000
+
+python -m datacon_agent.cli review-csv \
+  --domain nanozymes \
+  --pred outputs/nanozymes_gpt41_candidates.csv \
+  --pdf-dir data/pdfs/nanozymes \
+  --out outputs/nanozymes_gpt41_reviewed.csv \
+  --model just-ai/openai-proxy/gpt-4.1 \
+  --review-model just-ai/openai-proxy/gpt-4.1 \
+  --review-context-chars 60000 \
+  --passes 2
 
 find data/pdfs/nanozymes -maxdepth 1 -type f -name '*.pdf' \
   -printf '%f\n' | sed 's/\.pdf$//' | sort > outputs/nanozymes_articles.txt
 
 python -m datacon_agent.cli evaluate \
   --domain nanozymes \
-  --pred outputs/nanozymes_gpt41.csv \
+  --pred outputs/nanozymes_gpt41_reviewed.csv \
   --articles outputs/nanozymes_articles.txt \
   --out outputs/nanozymes_metrics_gpt41.csv
 ```
 
-Контрольный прогон на 9 скачанных Nanozymes PDF показал Macro-F1 `0.477394`
+Контрольный прогон на 9 скачанных Nanozymes PDF показал Macro-F1 `0.615949`
 против `0.290701` у single-agent baseline на той же подвыборке статей
-(`+0.186693`). На 5 PDF после финальной нормализации получено `0.625000`
+(`+0.325248`). На 5 PDF после финальной нормализации получено `0.625000`
 против `0.349333` у baseline. Для официальной оценки нужно догрузить все
 доступные PDF/SI и прогнать тот же evaluator по полному article subset.
 

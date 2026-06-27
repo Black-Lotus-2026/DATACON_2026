@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from datacon_agent.agent import AgentSettings, ChemExtractionAgent
-from datacon_agent.batch import extract_pdf_dir
+from datacon_agent.batch import extract_pdf_dir, review_prediction_csv
 from datacon_agent.download import download_open_access_pdfs
 from datacon_agent.domains import DOMAINS, get_domain
 from datacon_agent.metrics import evaluate_predictions, macro_f1, read_article_ids
@@ -45,6 +45,17 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--out", required=True, help="Output CSV path")
     batch.set_defaults(func=cmd_batch)
 
+    review_csv = subparsers.add_parser(
+        "review-csv",
+        help="Refine a prediction CSV with article-level text context",
+    )
+    add_agent_args(review_csv)
+    review_csv.add_argument("--pred", required=True, help="Candidate prediction CSV")
+    review_csv.add_argument("--pdf-dir", required=True, help="Directory with matching PDF files")
+    review_csv.add_argument("--out", required=True, help="Reviewed output CSV path")
+    review_csv.add_argument("--passes", type=int, default=1, help="Number of iterative review passes")
+    review_csv.set_defaults(func=cmd_review_csv)
+
     download = subparsers.add_parser("download-pdfs", help="Download open-access PDFs by DOI")
     download.add_argument("--domain", required=True, choices=sorted(DOMAINS))
     download.add_argument("--out-dir", required=True, help="Directory for downloaded PDF files")
@@ -80,6 +91,12 @@ def add_agent_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-pages", type=int)
     parser.add_argument("--no-images", action="store_true", help="Do not send rendered page images")
     parser.add_argument("--no-review", action="store_true", help="Skip final LLM review pass")
+    parser.add_argument(
+        "--review-context-chars",
+        type=int,
+        default=60_000,
+        help="Maximum article text characters included in the final review pass; use 0 to disable",
+    )
 
 
 def settings_from_args(args: argparse.Namespace) -> AgentSettings:
@@ -93,6 +110,7 @@ def settings_from_args(args: argparse.Namespace) -> AgentSettings:
         max_image_pages_per_window=args.max_image_pages_per_window,
         page_dpi=args.page_dpi,
         review_candidates=not args.no_review,
+        review_context_chars=args.review_context_chars,
         max_pages=args.max_pages,
     )
 
@@ -119,6 +137,21 @@ def cmd_batch(args: argparse.Namespace) -> None:
     domain = get_domain(args.domain)
     output = extract_pdf_dir(domain, args.pdf_dir, args.out, settings=settings_from_args(args))
     print(f"Wrote batch CSV to {output}")
+
+
+def cmd_review_csv(args: argparse.Namespace) -> None:
+    domain = get_domain(args.domain)
+    settings = settings_from_args(args)
+    settings.render_pages = False
+    output = review_prediction_csv(
+        domain,
+        args.pred,
+        args.pdf_dir,
+        args.out,
+        settings=settings,
+        passes=args.passes,
+    )
+    print(f"Wrote reviewed CSV to {output}")
 
 
 def cmd_download(args: argparse.Namespace) -> None:

@@ -43,7 +43,23 @@ def normalize_samples(domain: DomainSpec, payload: dict[str, Any] | list[dict[st
 def finalize_samples(domain: DomainSpec, payload: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = normalize_samples(domain, payload)
     if domain.key == "nanozymes":
+        rows = fill_nanozyme_missing_dimensions(rows)
         rows = filter_nanozyme_setup_rows(rows)
+    return rows
+
+
+def fill_nanozyme_missing_dimensions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    for row in rows:
+        length = row.get("length")
+        width = row.get("width")
+        depth = row.get("depth")
+        if not is_missing(length):
+            if is_missing(width):
+                row["width"] = length
+            if is_missing(depth):
+                row["depth"] = length
+        elif not is_missing(width) and is_missing(depth):
+            row["depth"] = width
     return rows
 
 
@@ -207,7 +223,10 @@ def pdf_identifier(domain: DomainSpec, pdf_name: str) -> str:
         if not name.lower().endswith(".pdf"):
             return f"{name}.pdf"
         return name
-    return path.stem
+    name = path.name
+    if name.lower().endswith(".pdf"):
+        return name[:-4]
+    return name
 
 
 def write_csv(

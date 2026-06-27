@@ -33,6 +33,7 @@ def test_synergy_aliases_are_mapped_to_evaluator_columns() -> None:
 def test_pdf_identifier_matches_domain_contract() -> None:
     synergy = get_domain("synergy")
     benzimidazole = get_domain("benzimidazole")
+    nanozymes = get_domain("nanozymes")
 
     assert samples_to_frame(synergy, [], pdf_name="paper.pdf")["pdf"].empty
 
@@ -42,9 +43,15 @@ def test_pdf_identifier_matches_domain_contract() -> None:
         [{"compound_id": "5a"}],
         pdf_name="paper.pdf",
     )
+    dotted_article_frame = samples_to_frame(
+        nanozymes,
+        [{"formula": "LaNiO3"}],
+        pdf_name="THNO.19257",
+    )
 
     assert synergy_frame.loc[0, "pdf"] == "paper.pdf"
     assert benzimidazole_frame.loc[0, "pdf"] == "paper"
+    assert dotted_article_frame.loc[0, "pdf"] == "THNO.19257"
 
 
 def test_pdf_identifier_adds_extension_for_nanoparticle_single_agent_stems() -> None:
@@ -111,3 +118,24 @@ def test_nanozyme_condition_integers_keep_decimal_form() -> None:
     assert rows[0]["ccat_value"] == "10.0"
     assert rows[0]["length"] == "800"
     assert rows[0]["width"] == "20-30"
+
+
+def test_nanozyme_single_size_fills_missing_axes() -> None:
+    domain = get_domain("nanozymes")
+
+    rows = finalize_samples(
+        domain,
+        [
+            {
+                "formula": "CeO2",
+                "length": "13",
+                "width": "NOT_DETECTED",
+                "depth": "NOT_DETECTED",
+                "km_value": "0.217",
+            }
+        ],
+    )
+
+    assert rows[0]["length"] == "13"
+    assert rows[0]["width"] == "13"
+    assert rows[0]["depth"] == "13"
