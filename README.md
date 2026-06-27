@@ -256,8 +256,10 @@ python -m datacon_agent.cli extract \
 `--run-evidence-agents` включает локальный structured fact layer:
 
 ```text
+TablePlanner
+  -> per-table plan: compound column, measurement columns, target type, units
 TableMeasurementAgent
-  -> measurement candidates from table rows
+  -> column-aware measurement facts from table rows
 CompoundLinkingAgent
   -> compound_id + measurement + SMILES links
 ConflictResolverAgent
@@ -266,9 +268,14 @@ ScaffoldResolverAgent
   -> scaffold/R-group cases that need substituent resolution
 ```
 
-Эти агенты пишут результаты в SQLite-таблицы `agent_*` и одновременно
-публикуют RAG-friendly `evidence_blocks`, которые затем читает финальный
-`datacon_agent`.
+`TableMeasurementAgent` теперь применяет план таблицы к строкам, поэтому одна
+строка может давать несколько фактов. Например antimicrobial row
+`63a | 28 | 26 | 21 | 19` раскладывается на отдельные measurements для
+`S. aureus`, `P. aeruginosa`, `E. coli`, `S. typhosa`. План сохраняется в
+`agent_table_measurements.metadata_json` как `table_plan` и `column_plan`.
+
+Эти агенты пишут результаты в SQLite-таблицы `agent_*` и одновременно публикуют
+RAG-friendly `evidence_blocks`, которые затем читает финальный `datacon_agent`.
 
 ## Multi-agent chemical image pipeline
 

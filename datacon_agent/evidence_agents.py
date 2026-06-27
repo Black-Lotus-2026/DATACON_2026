@@ -87,11 +87,13 @@ CREATE TABLE IF NOT EXISTS agent_scaffold_resolutions (
 
 
 TARGET_RE = re.compile(r"\b(MIC|pMIC|MIC50|MIC80|IC50|EC50|FIC|lgK|logK|Km|Vmax)\b", re.I)
+INHIBITION_ZONE_RE = re.compile(r"\b(?:inhibition\s+zone|zone\s+diameters?|agar\s+diffusion)\b", re.I)
 REL_VALUE_RE = re.compile(
     r"(?P<rel><=|>=|=|<|>)?\s*"
     r"(?P<value>\d+(?:[\.,]\d+)?)\s*"
     r"(?P<units>µg\s*mL[−-]1|μg\s*mL[−-]1|ug\s*mL[−-]1|"
-    r"µg/mL|μg/mL|ug/mL|mg/L|mg\s*L[−-]1|mM|µM|μM|uM|nM)?",
+    r"µmol\s*mL[−-]1|μmol\s*mL[−-]1|umol\s*mL[−-]1|"
+    r"µg/mL|μg/mL|ug/mL|mg/L|mg\s*L[−-]1|mM|µM|μM|uM|nM|mm)?",
     re.I,
 )
 COMPOUND_RE = re.compile(
@@ -104,6 +106,18 @@ BACTERIA_PATTERNS = (
     ("Pseudomonas aeruginosa", re.compile(r"\b(?:P\.?\s*aeruginosa|Pseudomonas\s+aeruginosa)\b", re.I)),
     ("Bacillus subtilis", re.compile(r"\b(?:B\.?\s*subtilis|Bacillus\s+subtilis)\b", re.I)),
     ("Enterococcus faecalis", re.compile(r"\b(?:E\.?\s*faecalis|Enterococcus\s+faecalis)\b", re.I)),
+    ("Salmonella typhosa", re.compile(r"\b(?:S\.?\s*typhosa|Salmonella\s+typhosa)\b", re.I)),
+    ("Staphylococcus epidermidis", re.compile(r"\b(?:S\.?\s*epiderm(?:idis|itis)|Staphylococcus\s+epiderm(?:idis|itis))\b", re.I)),
+    ("Aspergillus niger", re.compile(r"\b(?:A\.?\s*niger|Aspergillus\s+niger)\b", re.I)),
+    ("Candida albicans", re.compile(r"\b(?:C\.?\s*albicans|Candida\s+albicans)\b", re.I)),
+)
+COMPOUND_COLUMN_RE = re.compile(r"\b(?:compounds?|hybrids?|samples?|entries|entry|no\.?|id)\b", re.I)
+VALUE_MISSING_RE = re.compile(r"^\s*(?:-|--|n\.?d\.?|not\s+detected|na|n/a)?\s*$", re.I)
+UNIT_IN_CONTEXT_RE = re.compile(
+    r"\((µg\s*mL[−-]1|μg\s*mL[−-]1|ug\s*mL[−-]1|"
+    r"µmol\s*mL[−-]1|μmol\s*mL[−-]1|umol\s*mL[−-]1|µg/mL|μg/mL|ug/mL|mg/L|"
+    r"mg\s*L[−-]1|mM|µM|μM|uM|nM|mm)\)",
+    re.I,
 )
 SMILES_TEXT_RE = re.compile(r"(?:canonical_smiles|smiles)\s*[=:]\s*([^|\s]+)", re.I)
 COMPOUND_TEXT_RE = re.compile(r"compound_id\s*[=:]\s*([^|\s]+)", re.I)
@@ -117,6 +131,28 @@ class EvidenceAgentConfig:
     run_linking_agent: bool = True
     run_conflict_resolver: bool = True
     run_scaffold_resolver: bool = True
+
+
+@dataclass(frozen=True)
+class MeasurementColumnPlan:
+    index: int
+    column: str
+    target_type: str
+    target_units: str | None
+    bacteria: str | None
+    confidence: float
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TablePlan:
+    table_id: str
+    compound_column_index: int | None
+    measurement_columns: tuple[MeasurementColumnPlan, ...]
+    target_type: str | None
+    target_units: str | None
+    confidence: float
+    reasons: tuple[str, ...]
 
 
 def run_evidence_agents(
@@ -154,19 +190,21 @@ class TableMeasurementAgent:
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
+        self._table_plans: dict[str, TablePlan] = {}
 
     def run(self) -> dict[str, int]:
         self._clear_previous()
         inserted = 0
         skipped = 0
         for row in self._rows():
-            record = self._extract_record(row)
-            if record is None:
+            records = self._extract_records(row)
+            if not records:
                 skipped += 1
                 continue
-            self._insert_record(record)
-            inserted += 1
-        return {"inserted": inserted, "skipped": skipped}
+            for record in records:
+                self._insert_record(record)
+                inserted += 1
+        return {"inserted": inserted, "skipped": skipped, "planned_tables": len(self._table_plans)}
 
     def _rows(self) -> list[sqlite3.Row]:
         return list(
@@ -192,25 +230,122 @@ class TableMeasurementAgent:
             )
         )
 
-    def _extract_record(self, row: sqlite3.Row) -> dict[str, Any] | None:
+    def _extract_records(self, row: sqlite3.Row) -> list[dict[str, Any]]:
         cells = json_list(row["cells_json"])
         columns = json_list(row["columns_json"])
-        text = " | ".join(part for part in [row["caption"], row["normalized_text"]] if part)
-        target_type = detect_target_type(text, columns)
-        compound_id = detect_compound_id(cells, text)
-        relation, value, units = detect_relation_value_units(text)
-        if not target_type or not compound_id or value is None:
-            return None
-        bacteria = detect_bacteria(text)
-        record_id = stable_id("tm", row["evidence_id"], compound_id, target_type, value, units or "")
+        row_text = row["normalized_text"] or " | ".join(cells)
+        table_context = " | ".join(part for part in [row["caption"], row_text] if part)
+        plan = self._plan_for(row)
+        compound_index = plan.compound_column_index
+        compound_id = detect_compound_id(cells, table_context, compound_index=compound_index)
+        if not compound_id:
+            return []
+
+        records = []
+        for column_plan in plan.measurement_columns:
+            index = column_plan.index
+            if index >= len(cells):
+                continue
+            cell = cells[index]
+            if is_missing_value(cell):
+                continue
+            relation, value, units = extract_measurement_value(cell, column_plan.column)
+            if value is None:
+                continue
+            units = units or column_plan.target_units or default_units_for_target(column_plan.target_type)
+            bacteria = column_plan.bacteria or detect_bacteria(
+                " | ".join(part for part in [column_plan.column, cell, row["caption"]] if part)
+            )
+            records.append(
+                self._record_from_candidate(
+                    row,
+                    cells=cells,
+                    columns=columns,
+                    column_index=index,
+                    column=column_plan.column,
+                    cell=cell,
+                    compound_id=compound_id,
+                    target_type=column_plan.target_type,
+                    relation=relation,
+                    value=value,
+                    units=units,
+                    bacteria=bacteria,
+                    raw_text=f"{column_plan.column}: {cell}" if column_plan.column else cell,
+                    table_plan=plan,
+                    column_plan=column_plan,
+                )
+            )
+        return records
+
+    def _plan_for(self, row: sqlite3.Row) -> TablePlan:
+        table_id = row["table_id"]
+        if table_id not in self._table_plans:
+            planner = TablePlanner(
+                table_id=table_id,
+                caption=row["caption"] or "",
+                columns=json_list(row["columns_json"]),
+                sample_rows=self._sample_rows(table_id),
+            )
+            self._table_plans[table_id] = planner.plan()
+        return self._table_plans[table_id]
+
+    def _sample_rows(self, table_id: str, *, limit: int = 25) -> list[list[str]]:
+        return [
+            json_list(row["cells_json"])
+            for row in self.conn.execute(
+                """
+                SELECT cells_json
+                FROM table_rows
+                WHERE table_id = ?
+                ORDER BY row_index
+                LIMIT ?
+                """,
+                (table_id, limit),
+            )
+        ]
+
+    def _record_from_candidate(
+        self,
+        row: sqlite3.Row,
+        *,
+        cells: list[str],
+        columns: list[str],
+        column_index: int,
+        column: str,
+        cell: str,
+        compound_id: str,
+        target_type: str,
+        relation: str | None,
+        value: str,
+        units: str | None,
+        bacteria: str | None,
+        raw_text: str,
+        table_plan: TablePlan,
+        column_plan: MeasurementColumnPlan,
+    ) -> dict[str, Any]:
+        record_id = stable_id(
+            "tm",
+            row["evidence_id"],
+            str(column_index),
+            compound_id,
+            target_type,
+            value,
+            units or "",
+            bacteria or "",
+        )
         metadata = {
             "agent": self.name,
             "row_id": row["row_id"],
             "row_index": row["row_index"],
+            "column_index": column_index,
+            "column": column,
+            "cell": cell,
             "columns": columns,
             "cells": cells,
             "table_label": row["label"],
             "table_caption": row["caption"],
+            "table_plan": table_plan_to_dict(table_plan),
+            "column_plan": measurement_column_plan_to_dict(column_plan),
         }
         return {
             "record_id": record_id,
@@ -225,7 +360,7 @@ class TableMeasurementAgent:
             "target_value": value,
             "target_units": units or NOT_DETECTED,
             "bacteria": bacteria or NOT_DETECTED,
-            "raw_text": text,
+            "raw_text": raw_text,
             "confidence": table_measurement_confidence(compound_id, target_type, value, units, bacteria),
             "metadata": metadata,
         }
@@ -282,6 +417,126 @@ class TableMeasurementAgent:
 
     def _clear_previous(self) -> None:
         clear_agent_outputs(self.conn, "agent_table_measurement", "agent_table_measurements")
+
+
+class TablePlanner:
+    def __init__(
+        self,
+        *,
+        table_id: str,
+        caption: str,
+        columns: list[str],
+        sample_rows: list[list[str]],
+    ) -> None:
+        self.table_id = table_id
+        self.caption = caption
+        self.columns = columns
+        self.sample_rows = sample_rows
+
+    def plan(self) -> TablePlan:
+        compound_column_index = self._compound_column_index()
+        table_context = " | ".join([self.caption, *self.columns])
+        table_target_type = detect_target_type(table_context, self.columns)
+        table_units = detect_unit_from_context(table_context)
+        if table_target_type and table_units is None:
+            table_units = default_units_for_target(table_target_type)
+
+        measurement_columns = []
+        for index in range(self._column_count()):
+            if index == compound_column_index:
+                continue
+            column = self.columns[index] if index < len(self.columns) else ""
+            column_values = self._column_values(index)
+            column_plan = self._measurement_column_plan(
+                index=index,
+                column=column,
+                values=column_values,
+                table_target_type=table_target_type,
+                table_units=table_units,
+            )
+            if column_plan is not None:
+                measurement_columns.append(column_plan)
+
+        reasons = []
+        if compound_column_index is not None:
+            reasons.append("compound_column_detected")
+        if table_target_type:
+            reasons.append(f"table_target:{table_target_type}")
+        if table_units:
+            reasons.append(f"table_units:{table_units}")
+        if measurement_columns:
+            reasons.append(f"measurement_columns:{len(measurement_columns)}")
+
+        return TablePlan(
+            table_id=self.table_id,
+            compound_column_index=compound_column_index,
+            measurement_columns=tuple(measurement_columns),
+            target_type=table_target_type,
+            target_units=table_units,
+            confidence=table_plan_confidence(compound_column_index, measurement_columns, table_target_type),
+            reasons=tuple(reasons),
+        )
+
+    def _compound_column_index(self) -> int | None:
+        return detect_compound_column_index(self.columns, self.sample_rows[0] if self.sample_rows else [])
+
+    def _column_count(self) -> int:
+        return max([len(self.columns), *(len(row) for row in self.sample_rows)] or [0])
+
+    def _column_values(self, index: int) -> list[str]:
+        return [row[index] for row in self.sample_rows if index < len(row)]
+
+    def _measurement_column_plan(
+        self,
+        *,
+        index: int,
+        column: str,
+        values: list[str],
+        table_target_type: str | None,
+        table_units: str | None,
+    ) -> MeasurementColumnPlan | None:
+        non_empty_values = [value for value in values if not is_missing_value(value)]
+        measurement_hits = [
+            extract_measurement_value(value, column)
+            for value in non_empty_values
+        ]
+        numeric_hits = [hit for hit in measurement_hits if hit[1] is not None]
+        if not numeric_hits:
+            return None
+
+        column_context = " | ".join(part for part in [self.caption, column] if part)
+        target_type = detect_target_type(column_context, self.columns) or table_target_type
+        if not target_type:
+            return None
+
+        units = first_nonempty(hit[2] for hit in numeric_hits)
+        units = units or detect_unit_from_context(column_context) or table_units or default_units_for_target(target_type)
+        bacteria = detect_bacteria(column)
+        reasons = ["numeric_cells"]
+        if bacteria:
+            reasons.append(f"bacteria:{bacteria}")
+        if units:
+            reasons.append(f"units:{units}")
+        if target_type == table_target_type:
+            reasons.append("target_from_table")
+        else:
+            reasons.append("target_from_column")
+
+        return MeasurementColumnPlan(
+            index=index,
+            column=column,
+            target_type=target_type,
+            target_units=units,
+            bacteria=bacteria,
+            confidence=measurement_column_confidence(
+                numeric_hits=len(numeric_hits),
+                values=len(non_empty_values),
+                target_type=target_type,
+                units=units,
+                bacteria=bacteria,
+            ),
+            reasons=tuple(reasons),
+        )
 
 
 class CompoundLinkingAgent:
@@ -723,10 +978,28 @@ def upsert_agent_evidence(
 def detect_target_type(text: str, columns: list[str]) -> str | None:
     combined = " | ".join([text, *columns])
     match = TARGET_RE.search(combined)
-    return match.group(1).upper() if match else None
+    if match:
+        return match.group(1).upper()
+    if INHIBITION_ZONE_RE.search(combined):
+        return "INHIBITION_ZONE"
+    return None
 
 
-def detect_compound_id(cells: list[str], text: str) -> str | None:
+def detect_compound_column_index(columns: list[str], cells: list[str]) -> int | None:
+    for index, column in enumerate(columns):
+        if COMPOUND_COLUMN_RE.search(column):
+            return index
+    for index, cell in enumerate(cells[:2]):
+        if COMPOUND_RE.fullmatch(cell.strip()):
+            return index
+    return None
+
+
+def detect_compound_id(cells: list[str], text: str, *, compound_index: int | None = None) -> str | None:
+    if compound_index is not None and compound_index < len(cells):
+        value = cells[compound_index].strip()
+        if value and not is_missing_value(value):
+            return value
     for cell in cells[:2]:
         match = COMPOUND_RE.search(cell)
         if match:
@@ -740,11 +1013,41 @@ def detect_relation_value_units(text: str) -> tuple[str | None, str | None, str 
         value = match.group("value")
         if value is None:
             continue
+        if is_embedded_numeric_token(text, match.start("value"), match.end("value")):
+            continue
         start = max(0, match.start() - 30)
         context = text[start : match.end() + 30]
         if TARGET_RE.search(context) or match.group("units"):
             return match.group("rel"), value.replace(",", "."), normalize_unit(match.group("units"))
+        if re.fullmatch(r"\s*(?:<=|>=|=|<|>)?\s*\d+(?:[\.,]\d+)?\s*", text):
+            return match.group("rel"), value.replace(",", "."), None
     return None, None, None
+
+
+def extract_measurement_value(cell: str, column: str = "") -> tuple[str | None, str | None, str | None]:
+    relation, value, units = detect_relation_value_units(cell)
+    if value is not None:
+        return relation, value, units
+    if column:
+        return detect_relation_value_units(f"{column} {cell}")
+    return None, None, None
+
+
+def is_embedded_numeric_token(text: str, start: int, end: int) -> bool:
+    previous_char = text[start - 1] if start > 0 else ""
+    next_char = text[end] if end < len(text) else ""
+    return previous_char.isalpha() or next_char.isalpha()
+
+
+def is_missing_value(value: str) -> bool:
+    return bool(VALUE_MISSING_RE.fullmatch(value or ""))
+
+
+def detect_unit_from_context(text: str) -> str | None:
+    match = UNIT_IN_CONTEXT_RE.search(text)
+    if match:
+        return normalize_unit(match.group(1))
+    return None
 
 
 def detect_bacteria(text: str) -> str | None:
@@ -767,12 +1070,89 @@ def normalize_unit(unit: str | None) -> str | None:
     cleaned = unit.strip()
     replacements = {
         "ug": "µg",
+        "umol": "µmol",
         "μ": "µ",
         "mL-1": "mL−1",
     }
     for source, target in replacements.items():
         cleaned = cleaned.replace(source, target)
     return cleaned
+
+
+def default_units_for_target(target_type: str) -> str | None:
+    if target_type == "INHIBITION_ZONE":
+        return "mm"
+    return None
+
+
+def table_plan_confidence(
+    compound_column_index: int | None,
+    measurement_columns: list[MeasurementColumnPlan],
+    target_type: str | None,
+) -> float:
+    score = 0.35
+    if compound_column_index is not None:
+        score += 0.2
+    if target_type:
+        score += 0.18
+    if measurement_columns:
+        score += min(len(measurement_columns), 5) * 0.04
+        score += sum(column.confidence for column in measurement_columns) / len(measurement_columns) * 0.15
+    return min(score, 0.96)
+
+
+def measurement_column_confidence(
+    *,
+    numeric_hits: int,
+    values: int,
+    target_type: str,
+    units: str | None,
+    bacteria: str | None,
+) -> float:
+    score = 0.45
+    if values:
+        score += min(numeric_hits / values, 1.0) * 0.2
+    if target_type:
+        score += 0.12
+    if units:
+        score += 0.08
+    if bacteria:
+        score += 0.08
+    return min(score, 0.95)
+
+
+def table_plan_to_dict(plan: TablePlan) -> dict[str, Any]:
+    return {
+        "table_id": plan.table_id,
+        "compound_column_index": plan.compound_column_index,
+        "target_type": plan.target_type,
+        "target_units": plan.target_units,
+        "confidence": plan.confidence,
+        "reasons": list(plan.reasons),
+        "measurement_columns": [
+            measurement_column_plan_to_dict(column_plan)
+            for column_plan in plan.measurement_columns
+        ],
+    }
+
+
+def measurement_column_plan_to_dict(plan: MeasurementColumnPlan) -> dict[str, Any]:
+    return {
+        "index": plan.index,
+        "column": plan.column,
+        "target_type": plan.target_type,
+        "target_units": plan.target_units,
+        "bacteria": plan.bacteria,
+        "confidence": plan.confidence,
+        "reasons": list(plan.reasons),
+    }
+
+
+def first_nonempty(values: Any) -> Any:
+    for value in values:
+        if value:
+            return value
+    return None
 
 
 def table_measurement_confidence(
