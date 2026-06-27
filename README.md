@@ -168,6 +168,47 @@ runs/agent-antibiotics/agent_check/llm_raw.txt
 
 Подробности: `docs/agent_checker.md`.
 
+## Evaluator-backed ChemX agent
+
+Добавлен отдельный контур `datacon_agent`: schema-driven LLM extractor для ChemX
+доменов, OpenAlex downloader для open-access PDF/SI и evaluator-compatible
+подсчёт Macro-F1 по настоящему truth dataset, а не по projected UI-оценке.
+
+Запуск через OpenAI-compatible endpoint:
+
+```bash
+export OPENAI_API_KEY=...
+export OPENAI_BASE_URL=https://caila.io/api/adapters/openai
+
+python -m datacon_agent.cli download-pdfs \
+  --domain nanozymes \
+  --out-dir data/pdfs/nanozymes
+
+python -m datacon_agent.cli batch \
+  --domain nanozymes \
+  --pdf-dir data/pdfs/nanozymes \
+  --out outputs/nanozymes_gpt41.csv \
+  --model just-ai/openai-proxy/gpt-4.1 \
+  --review-model just-ai/openai-proxy/gpt-4.1 \
+  --pages-per-window 5 \
+  --max-image-pages-per-window 3
+
+find data/pdfs/nanozymes -maxdepth 1 -type f -name '*.pdf' \
+  -printf '%f\n' | sed 's/\.pdf$//' | sort > outputs/nanozymes_articles.txt
+
+python -m datacon_agent.cli evaluate \
+  --domain nanozymes \
+  --pred outputs/nanozymes_gpt41.csv \
+  --articles outputs/nanozymes_articles.txt \
+  --out outputs/nanozymes_metrics_gpt41.csv
+```
+
+Контрольный прогон на 9 скачанных Nanozymes PDF показал Macro-F1 `0.477394`
+против `0.290701` у single-agent baseline на той же подвыборке статей
+(`+0.186693`). На 5 PDF после финальной нормализации получено `0.625000`
+против `0.349333` у baseline. Для официальной оценки нужно догрузить все
+доступные PDF/SI и прогнать тот же evaluator по полному article subset.
+
 ## Multi-agent chemical image pipeline
 
 Для анализа научных схем и отдельного chemical OCR добавлен контур:
@@ -225,4 +266,6 @@ app/services/agent/skills/specialized/chemical_ocr/SKILL.md
 - TXT/MD проходят через regex-эвристики для SMILES, DOI и экспериментальных свойств.
 - ZIP сохраняется для подключения внешнего extractor.
 
-Для production-качества ChemX можно заменить функции `records_from_text`, `records_from_rows` и `build_metrics` на LLM/RAG/fine-tuned pipeline, сохранив тот же контракт API для фронтенда.
+Production-контур для ChemX-метрики вынесен в `datacon_agent`, чтобы UI-MVP
+оставался быстрым, а leaderboard-оценка считалась воспроизводимо через
+ChemX-compatible evaluator.
