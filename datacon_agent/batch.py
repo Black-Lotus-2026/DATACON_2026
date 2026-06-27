@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -9,7 +10,7 @@ from datacon_agent.agent import AgentSettings, ChemExtractionAgent
 from datacon_agent.domains import NOT_DETECTED, DomainSpec
 from datacon_agent.normalize import finalize_samples, pdf_identifier, samples_to_frame
 from datacon_agent.pdf import load_pdf
-from datacon_agent.scraper_context import scrape_pdf_to_document
+from datacon_agent.scraper_context import ScraperPipelineConfig, scrape_pdf_to_document
 
 
 def extract_pdf_dir(
@@ -21,6 +22,7 @@ def extract_pdf_dir(
     use_scraper: bool = False,
     scraper_dir: str | Path | None = None,
     overwrite_scrape: bool = False,
+    scraper_config: ScraperPipelineConfig | None = None,
 ) -> Path:
     directory = Path(pdf_dir)
     pdfs = sorted(path for path in directory.iterdir() if path.suffix.lower() == ".pdf")
@@ -29,12 +31,15 @@ def extract_pdf_dir(
 
     for pdf_path in tqdm(pdfs, desc=f"Extract {domain.key}"):
         if use_scraper:
+            config = scraper_config or ScraperPipelineConfig(
+                scraper_dir=scraper_dir,
+                overwrite_scrape=overwrite_scrape,
+            )
             document = scrape_pdf_to_document(
                 pdf_path,
-                scraper_dir=scraper_dir,
-                overwrite=overwrite_scrape,
                 render_pages=settings.render_pages,
                 dpi=settings.page_dpi,
+                config=config,
             )
             samples = agent.extract_document(document)
         else:
@@ -61,6 +66,7 @@ def review_prediction_csv(
     use_scraper: bool = False,
     scraper_dir: str | Path | None = None,
     overwrite_scrape: bool = False,
+    scraper_config: ScraperPipelineConfig | None = None,
 ) -> Path:
     directory = Path(pdf_dir)
     pdfs = sorted(path for path in directory.iterdir() if path.suffix.lower() == ".pdf")
@@ -75,12 +81,17 @@ def review_prediction_csv(
             pdf_id = pdf_identifier(domain, pdf_path.name)
             candidates = rows_for_pdf(predictions, domain, pdf_id)
             if use_scraper:
+                config = scraper_config or ScraperPipelineConfig(
+                    scraper_dir=scraper_dir,
+                    overwrite_scrape=overwrite_scrape,
+                )
+                if pass_index > 0 and config.overwrite_scrape:
+                    config = replace(config, overwrite_scrape=False)
                 document = scrape_pdf_to_document(
                     pdf_path,
-                    scraper_dir=scraper_dir,
-                    overwrite=overwrite_scrape and pass_index == 0,
                     render_pages=False,
                     dpi=settings.page_dpi,
+                    config=config,
                 )
             else:
                 document = load_pdf(pdf_path, render_pages=False)

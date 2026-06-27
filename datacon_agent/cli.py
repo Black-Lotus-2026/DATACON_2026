@@ -13,7 +13,7 @@ from datacon_agent.domains import DOMAINS, get_domain
 from datacon_agent.metrics import evaluate_predictions, macro_f1, read_article_ids
 from datacon_agent.normalize import write_csv
 from datacon_agent.schema import structured_output_schema
-from datacon_agent.scraper_context import DEFAULT_SCRAPER_DIR, scrape_pdf_to_document
+from datacon_agent.scraper_context import DEFAULT_SCRAPER_DIR, ScraperPipelineConfig, scrape_pdf_to_document
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -110,6 +110,10 @@ def add_scraper_args(parser: argparse.ArgumentParser) -> None:
         help="Run the local SQLite evidence scraper before calling the LLM agent",
     )
     parser.add_argument(
+        "--scrape-sqlite",
+        help="Use an existing scrape.sqlite instead of rebuilding the scraper run. Supported for single-PDF extract.",
+    )
+    parser.add_argument(
         "--scraper-dir",
         default=str(DEFAULT_SCRAPER_DIR),
         help="Directory for scraper run artifacts",
@@ -119,6 +123,39 @@ def add_scraper_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Rebuild scrape.sqlite even when a cached scrape exists",
     )
+    parser.add_argument("--run-visual", action="store_true", help="Run structure detection before LLM extraction")
+    parser.add_argument("--visual-provider", choices=["heuristic", "decimer"], default="heuristic")
+    parser.add_argument("--visual-limit", type=int)
+    parser.add_argument("--run-ocsr", action="store_true", help="Run MolScribe OCSR before LLM extraction")
+    parser.add_argument("--ocsr-provider", choices=["molscribe"], default="molscribe")
+    parser.add_argument(
+        "--ocsr-detector-provider",
+        default=None,
+        help="Filter OCSR crops by detector provider, e.g. decimer_segmentation. Default uses all detections.",
+    )
+    parser.add_argument("--ocsr-limit", type=int)
+    parser.add_argument("--ocsr-rerun", action="store_true")
+    parser.add_argument("--ocsr-batch-size", type=int, default=8)
+    parser.add_argument("--ocsr-device", default="cpu")
+    parser.add_argument("--ocsr-min-confidence", type=float, default=0.0)
+    parser.add_argument(
+        "--run-chemical-agents",
+        action="store_true",
+        help="Run DataImageAnalysisAgent and ChemicalOCRAgent, then import accepted SMILES into scrape.sqlite",
+    )
+    parser.add_argument("--chemical-agent-dir", help="Root directory for old chemical-agent artifacts")
+    parser.add_argument("--chemical-env-file", default=".env")
+    parser.add_argument("--chemical-llm-provider", default="vsegpt")
+    parser.add_argument("--chemical-llm-base-url")
+    parser.add_argument("--chemical-data-model", help="Vision-capable model for DataImageAnalysisAgent")
+    parser.add_argument("--chemical-model", help="Vision-capable model for ChemicalOCRAgent")
+    parser.add_argument("--chemical-temperature", type=float, default=0.01)
+    parser.add_argument("--chemical-max-tokens", type=int, default=1800)
+    parser.add_argument("--chemical-timeout", type=float, default=180.0)
+    parser.add_argument("--chemical-data-limit", type=int)
+    parser.add_argument("--chemical-limit", type=int)
+    parser.add_argument("--chemical-max-crops-per-figure", type=int, default=12)
+    parser.add_argument("--chemical-no-response-format", action="store_true")
 
 
 def settings_from_args(args: argparse.Namespace) -> AgentSettings:
@@ -137,6 +174,51 @@ def settings_from_args(args: argparse.Namespace) -> AgentSettings:
     )
 
 
+def scraper_config_from_args(args: argparse.Namespace, *, allow_scrape_sqlite: bool) -> ScraperPipelineConfig:
+    if args.scrape_sqlite and not allow_scrape_sqlite:
+        raise SystemExit("--scrape-sqlite is only supported for the single-PDF extract command.")
+    return ScraperPipelineConfig(
+        scraper_dir=args.scraper_dir,
+        scrape_sqlite=args.scrape_sqlite if allow_scrape_sqlite else None,
+        overwrite_scrape=args.overwrite_scrape,
+        run_visual=args.run_visual,
+        visual_provider=args.visual_provider,
+        visual_limit=args.visual_limit,
+        run_ocsr=args.run_ocsr,
+        ocsr_provider=args.ocsr_provider,
+        ocsr_detector_provider=args.ocsr_detector_provider,
+        ocsr_limit=args.ocsr_limit,
+        ocsr_rerun=args.ocsr_rerun,
+        ocsr_batch_size=args.ocsr_batch_size,
+        ocsr_device=args.ocsr_device,
+        ocsr_min_confidence=args.ocsr_min_confidence,
+        run_chemical_agents=args.run_chemical_agents,
+        chemical_agent_dir=args.chemical_agent_dir,
+        chemical_env_file=args.chemical_env_file,
+        chemical_llm_provider=args.chemical_llm_provider,
+        chemical_llm_base_url=args.chemical_llm_base_url,
+        chemical_data_model=args.chemical_data_model,
+        chemical_model=args.chemical_model,
+        chemical_temperature=args.chemical_temperature,
+        chemical_max_tokens=args.chemical_max_tokens,
+        chemical_timeout=args.chemical_timeout,
+        chemical_data_limit=args.chemical_data_limit,
+        chemical_limit=args.chemical_limit,
+        chemical_max_crops_per_figure=args.chemical_max_crops_per_figure,
+        chemical_no_response_format=args.chemical_no_response_format,
+    )
+
+
+def scraper_mode_requested(args: argparse.Namespace) -> bool:
+    return (
+        args.use_scraper
+        or bool(args.scrape_sqlite)
+        or args.run_visual
+        or args.run_ocsr
+        or args.run_chemical_agents
+    )
+
+
 def cmd_domains(args: argparse.Namespace) -> None:
     for key, domain in DOMAINS.items():
         print(f"{key}\t{domain.title}\t{domain.hf_dataset}")
@@ -150,13 +232,12 @@ def cmd_schema(args: argparse.Namespace) -> None:
 def cmd_extract(args: argparse.Namespace) -> None:
     domain = get_domain(args.domain)
     agent = ChemExtractionAgent(domain, settings=settings_from_args(args))
-    if args.use_scraper:
+    if scraper_mode_requested(args):
         document = scrape_pdf_to_document(
             args.pdf,
-            scraper_dir=args.scraper_dir,
-            overwrite=args.overwrite_scrape,
             render_pages=agent.settings.render_pages,
             dpi=agent.settings.page_dpi,
+            config=scraper_config_from_args(args, allow_scrape_sqlite=True),
         )
         samples = agent.extract_document(document)
     else:
@@ -167,14 +248,14 @@ def cmd_extract(args: argparse.Namespace) -> None:
 
 def cmd_batch(args: argparse.Namespace) -> None:
     domain = get_domain(args.domain)
+    use_scraper = scraper_mode_requested(args)
     output = extract_pdf_dir(
         domain,
         args.pdf_dir,
         args.out,
         settings=settings_from_args(args),
-        use_scraper=args.use_scraper,
-        scraper_dir=args.scraper_dir,
-        overwrite_scrape=args.overwrite_scrape,
+        use_scraper=use_scraper,
+        scraper_config=scraper_config_from_args(args, allow_scrape_sqlite=False) if use_scraper else None,
     )
     print(f"Wrote batch CSV to {output}")
 
@@ -183,6 +264,7 @@ def cmd_review_csv(args: argparse.Namespace) -> None:
     domain = get_domain(args.domain)
     settings = settings_from_args(args)
     settings.render_pages = False
+    use_scraper = scraper_mode_requested(args)
     output = review_prediction_csv(
         domain,
         args.pred,
@@ -190,9 +272,8 @@ def cmd_review_csv(args: argparse.Namespace) -> None:
         args.out,
         settings=settings,
         passes=args.passes,
-        use_scraper=args.use_scraper,
-        scraper_dir=args.scraper_dir,
-        overwrite_scrape=args.overwrite_scrape,
+        use_scraper=use_scraper,
+        scraper_config=scraper_config_from_args(args, allow_scrape_sqlite=False) if use_scraper else None,
     )
     print(f"Wrote reviewed CSV to {output}")
 
