@@ -156,6 +156,15 @@ def add_scraper_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--chemical-limit", type=int)
     parser.add_argument("--chemical-max-crops-per-figure", type=int, default=12)
     parser.add_argument("--chemical-no-response-format", action="store_true")
+    parser.add_argument(
+        "--run-evidence-agents",
+        action="store_true",
+        help="Run all structured evidence agents after scraper/OCSR/chemical OCR stages",
+    )
+    parser.add_argument("--run-table-agent", action="store_true", help="Extract measurement candidates from tables")
+    parser.add_argument("--run-linking-agent", action="store_true", help="Link compounds, measurements, and SMILES")
+    parser.add_argument("--run-conflict-resolver", action="store_true", help="Resolve linked-record conflicts")
+    parser.add_argument("--run-scaffold-resolver", action="store_true", help="Detect scaffold/R-group cases")
 
 
 def settings_from_args(args: argparse.Namespace) -> AgentSettings:
@@ -206,6 +215,11 @@ def scraper_config_from_args(args: argparse.Namespace, *, allow_scrape_sqlite: b
         chemical_limit=args.chemical_limit,
         chemical_max_crops_per_figure=args.chemical_max_crops_per_figure,
         chemical_no_response_format=args.chemical_no_response_format,
+        run_evidence_agents=args.run_evidence_agents,
+        run_table_agent=args.run_table_agent,
+        run_linking_agent=args.run_linking_agent,
+        run_conflict_resolver=args.run_conflict_resolver,
+        run_scaffold_resolver=args.run_scaffold_resolver,
     )
 
 
@@ -216,6 +230,11 @@ def scraper_mode_requested(args: argparse.Namespace) -> bool:
         or args.run_visual
         or args.run_ocsr
         or args.run_chemical_agents
+        or args.run_evidence_agents
+        or args.run_table_agent
+        or args.run_linking_agent
+        or args.run_conflict_resolver
+        or args.run_scaffold_resolver
     )
 
 

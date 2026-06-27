@@ -8,12 +8,15 @@ import random
 import re
 import time
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any
 
 UPLOAD_DIR = Path("uploads")
 RUNS_DIR = Path("runs")
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_ARCHIVE_PDFS = 12
+MAX_ARCHIVE_UNCOMPRESSED_BYTES = 120 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".tsv", ".zip", ".txt", ".md"}
 
 CHEMX_DOMAINS: list[dict[str, Any]] = [
@@ -176,6 +179,8 @@ def analyze_source(contents: bytes, filename: str) -> dict[str, Any]:
     text = ""
     table_rows: list[dict[str, str]] = []
     notes: list[str] = []
+    source_documents: list[str] = []
+    archive_summary: dict[str, Any] = {}
 
     if suffix in {".csv", ".tsv"}:
         table_rows = parse_table_rows(contents, filename, limit=250)
@@ -184,17 +189,28 @@ def analyze_source(contents: bytes, filename: str) -> dict[str, Any]:
     elif suffix == ".pdf":
         text, pdf_notes = extract_pdf_text(contents)
         notes.extend(pdf_notes)
+        source_documents.append(filename)
     elif suffix in {".txt", ".md"}:
         text = contents.decode("utf-8-sig", errors="ignore")
         notes.append(f"Loaded {len(text.split())} text tokens.")
     elif suffix == ".zip":
-        notes.append("ZIP package saved for downstream extractor integration.")
+        zip_result = extract_zip_pdf_text(contents)
+        text = zip_result["text"]
+        notes.extend(zip_result["notes"])
+        source_documents.extend(zip_result["source_documents"])
+        archive_summary = zip_result["archive_summary"]
 
     return {
         "text": text[:250_000],
         "table_rows": table_rows,
         "preview_rows": table_rows[:8],
-        "summary": build_source_summary(text, table_rows, notes),
+        "summary": build_source_summary(
+            text,
+            table_rows,
+            notes,
+            source_documents=source_documents,
+            archive_summary=archive_summary,
+        ),
     }
 
 
@@ -209,6 +225,7 @@ def create_job(
     source_summary: dict[str, Any] | None = None,
     table_rows: list[dict[str, str]] | None = None,
     preview_rows: list[dict[str, str]] | None = None,
+    model_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     domain = get_domain(domain_name)
     job_id = uuid.uuid4().hex[:12]
@@ -238,6 +255,7 @@ def create_job(
         ],
         "source_text": source_text,
         "source_summary": source_summary or {},
+        "model_config": model_config or default_model_config(),
         "table_rows": table_rows or [],
         "preview_rows": preview_rows or [],
         "records": [],
@@ -245,6 +263,13 @@ def create_job(
         "artifacts": {},
         "cancel_requested": False,
     }
+    if job["model_config"].get("router_url"):
+        job["logs"].append(
+            {
+                "time": _clock(),
+                "message": f"Model router configured for {job['model_config'].get('model') or 'default model'}.",
+            }
+        )
     JOBS[job_id] = job
     persist_job(job)
     return job
@@ -327,6 +352,7 @@ def summarize_job(job: dict[str, Any], *, include_private: bool = False) -> dict
         "updated_at": job["updated_at"],
         "logs": job["logs"][-30:],
         "source_summary": job.get("source_summary", {}),
+        "model_config": job.get("model_config", default_model_config()),
         "preview_rows": job.get("preview_rows", [])[:8],
         "records": job["records"],
         "metrics": job["metrics"],
@@ -419,6 +445,72 @@ def extract_pdf_text(contents: bytes) -> tuple[str, list[str]]:
     if not text:
         notes.append("No selectable text found; scanned PDFs need OCR or vision integration.")
     return text, notes
+
+
+def extract_zip_pdf_text(contents: bytes) -> dict[str, Any]:
+    notes: list[str] = []
+    text_chunks: list[str] = []
+    source_documents: list[str] = []
+
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(contents))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("ZIP archive is damaged or has an unsupported format.") from exc
+
+    with archive:
+        entries = [
+            info
+            for info in archive.infolist()
+            if not info.is_dir() and not Path(info.filename).name.startswith(".")
+        ]
+        pdf_entries = sorted(
+            [info for info in entries if Path(info.filename).suffix.lower() == ".pdf"],
+            key=lambda info: info.filename.lower(),
+        )
+        if not pdf_entries:
+            raise ValueError("ZIP archive must contain at least one PDF file.")
+
+        total_uncompressed = sum(info.file_size for info in pdf_entries)
+        if total_uncompressed > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
+            limit_mb = MAX_ARCHIVE_UNCOMPRESSED_BYTES // 1024 // 1024
+            raise ValueError(f"PDF files inside ZIP are too large after extraction. Limit is {limit_mb} MB.")
+
+        analyzed_entries = pdf_entries[:MAX_ARCHIVE_PDFS]
+        skipped_count = len(pdf_entries) - len(analyzed_entries)
+        notes.append(
+            f"ZIP archive contains {len(pdf_entries)} PDF file(s); analyzed {len(analyzed_entries)}."
+        )
+        if skipped_count:
+            notes.append(f"Skipped {skipped_count} PDF file(s) after the first {MAX_ARCHIVE_PDFS}.")
+
+        for info in analyzed_entries:
+            if info.flag_bits & 0x1:
+                notes.append(f"Skipped encrypted PDF: {info.filename}.")
+                continue
+            try:
+                pdf_bytes = archive.read(info)
+            except RuntimeError as exc:
+                notes.append(f"Could not read {info.filename}: {exc}.")
+                continue
+
+            pdf_text, pdf_notes = extract_pdf_text(pdf_bytes)
+            source_documents.append(info.filename)
+            if pdf_text:
+                text_chunks.append(f"\n\n--- {info.filename} ---\n{pdf_text}")
+            for note in pdf_notes[:2]:
+                notes.append(f"{info.filename}: {note}")
+
+    return {
+        "text": "\n".join(text_chunks),
+        "notes": notes,
+        "source_documents": source_documents,
+        "archive_summary": {
+            "archive_files": len(entries),
+            "pdf_files": len(pdf_entries),
+            "analyzed_pdf_files": len(source_documents),
+            "pdf_names": source_documents[:20],
+        },
+    }
 
 
 def safe_upload_name(filename: str) -> str:

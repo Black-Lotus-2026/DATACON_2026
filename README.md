@@ -237,6 +237,7 @@ python -m datacon_agent.cli extract \
   --run-visual --visual-provider decimer \
   --run-ocsr --ocsr-device cpu --ocsr-min-confidence 0.5 \
   --run-chemical-agents \
+  --run-evidence-agents \
   --chemical-data-model openai/gpt-5.5 \
   --chemical-model openai/gpt-5.5 \
   --chemical-no-response-format
@@ -251,6 +252,23 @@ python -m datacon_agent.cli extract \
   --scrape-sqlite runs/article/scrape.sqlite \
   --out outputs/article.csv
 ```
+
+`--run-evidence-agents` включает локальный structured fact layer:
+
+```text
+TableMeasurementAgent
+  -> measurement candidates from table rows
+CompoundLinkingAgent
+  -> compound_id + measurement + SMILES links
+ConflictResolverAgent
+  -> accepted / needs_review canonical linked records
+ScaffoldResolverAgent
+  -> scaffold/R-group cases that need substituent resolution
+```
+
+Эти агенты пишут результаты в SQLite-таблицы `agent_*` и одновременно
+публикуют RAG-friendly `evidence_blocks`, которые затем читает финальный
+`datacon_agent`.
 
 ## Multi-agent chemical image pipeline
 

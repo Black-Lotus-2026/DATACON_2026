@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from datacon_agent.evidence_agents import EvidenceAgentConfig, run_evidence_agents
 from datacon_agent.pdf import DocumentContext, PageContext, load_pdf, table_to_markdown
 
 
@@ -42,6 +43,11 @@ class ScraperPipelineConfig:
     chemical_limit: int | None = None
     chemical_max_crops_per_figure: int = 12
     chemical_no_response_format: bool = False
+    run_evidence_agents: bool = False
+    run_table_agent: bool = False
+    run_linking_agent: bool = False
+    run_conflict_resolver: bool = False
+    run_scaffold_resolver: bool = False
 
 
 def scrape_pdf_to_document(
@@ -113,7 +119,33 @@ def enrich_scrape_sqlite(sqlite_path: str | Path, *, config: ScraperPipelineConf
     if config.run_chemical_agents:
         summary["chemical_agents"] = run_chemical_agent_stage(db_path, config=config)
 
+    if should_run_evidence_agents(config):
+        summary["evidence_agents"] = run_evidence_agent_stage(db_path, config=config)
+
     return summary
+
+
+def should_run_evidence_agents(config: ScraperPipelineConfig) -> bool:
+    return (
+        config.run_evidence_agents
+        or config.run_table_agent
+        or config.run_linking_agent
+        or config.run_conflict_resolver
+        or config.run_scaffold_resolver
+    )
+
+
+def run_evidence_agent_stage(sqlite_path: str | Path, *, config: ScraperPipelineConfig) -> dict[str, Any]:
+    run_all = config.run_evidence_agents
+    return run_evidence_agents(
+        sqlite_path,
+        config=EvidenceAgentConfig(
+            run_table_agent=run_all or config.run_table_agent,
+            run_linking_agent=run_all or config.run_linking_agent,
+            run_conflict_resolver=run_all or config.run_conflict_resolver,
+            run_scaffold_resolver=run_all or config.run_scaffold_resolver,
+        ),
+    )
 
 
 def run_chemical_agent_stage(sqlite_path: str | Path, *, config: ScraperPipelineConfig) -> dict[str, Any]:
@@ -376,7 +408,11 @@ def load_scraped_evidence(conn: sqlite3.Connection) -> dict[int, list[sqlite3.Ro
             'figure_image',
             'scheme_image',
             'chemical_structure_image',
-            'chemical_structure_smiles'
+            'chemical_structure_smiles',
+            'agent_table_measurement',
+            'agent_compound_link',
+            'agent_conflict_decision',
+            'agent_scaffold_resolution'
           )
         ORDER BY page_number, source_type, evidence_id
         """
