@@ -168,6 +168,40 @@ runs/agent-antibiotics/agent_check/llm_raw.txt
 
 Подробности: `docs/agent_checker.md`.
 
+## Multi-agent chemical image pipeline
+
+Для анализа научных схем и отдельного chemical OCR добавлен контур:
+
+```text
+scraper SQLite
+  -> DataImageAnalysisAgent
+  -> ChemicalOCRAgent
+  -> RDKit validation
+  -> JSON/CSV
+```
+
+Специализированные prompt skills:
+
+```text
+app/services/agent/skills/specialized/data_image_analysis/SKILL.md
+app/services/agent/skills/specialized/chemical_ocr/SKILL.md
+```
+
+Ограниченный тестовый запуск:
+
+```bash
+.venv-ocsr/bin/python -m app.services.agent.multi_agent_pipeline \
+  runs/agent-antibiotics/scrape/scrape.sqlite \
+  --out runs/agent-antibiotics/multi_agent \
+  --data-model openai/gpt-4o-mini \
+  --chemical-model openai/gpt-4o-mini \
+  --data-limit 1 \
+  --chemical-limit 3 \
+  --no-response-format
+```
+
+Подробности: `docs/multi_agent_chemical_pipeline.md`.
+
 ## API
 
 - `GET /` - страница загрузки.

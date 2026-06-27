@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import re
@@ -217,6 +218,8 @@ class CheckerAgent:
         if self.run_llm:
             report["artifacts"]["llm_result_json"] = str(self.output_dir / "llm_result.json")
             report["artifacts"]["llm_raw_txt"] = str(self.output_dir / "llm_raw.txt")
+            report["artifacts"]["final_table_csv"] = str(self.output_dir / "final_table.csv")
+            report["artifacts"]["final_table_markdown"] = str(self.output_dir / "final_table.md")
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         markdown_path.write_text(render_markdown_report(report), encoding="utf-8")
         candidates_path.write_text(render_candidates_jsonl(checks), encoding="utf-8")
@@ -235,7 +238,7 @@ class CheckerAgent:
         check = checks[0]
         skill = skills_by_name[check["skill"]]
         variant = _select_variant(skill, check)
-        candidates = check["candidate_evidence"][: self.llm_top_k]
+        candidates = select_llm_candidates(check["candidate_evidence"], limit=self.llm_top_k)
         if not candidates:
             result = {
                 "status": "skipped",
@@ -281,6 +284,7 @@ class CheckerAgent:
     def _write_llm_artifacts(self, result: dict[str, Any], *, raw_text: str) -> None:
         (self.output_dir / "llm_result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         (self.output_dir / "llm_raw.txt").write_text(raw_text, encoding="utf-8")
+        _write_final_tables(self.output_dir, result.get("parsed_json"))
 
     def _check_skill(self, skill: ChemXSkill, bundle: ScraperBundle) -> dict[str, Any]:
         field_checks = [self._check_field(field, bundle.evidence) for field in skill.expected_fields]
@@ -504,6 +508,56 @@ def rank_candidate_evidence(evidence: tuple[EvidenceRow, ...], skill: ChemXSkill
     return candidates
 
 
+def select_llm_candidates(candidates: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    """Keep LLM context balanced across narrative, tables, and OCSR output."""
+    if limit <= 0:
+        return []
+
+    quota = max(1, limit // 3)
+    context_quota = max(1, limit - (quota * 2))
+    table_rows = [item for item in candidates if item["source_type"] == "table_row"]
+    measurement_rows = [
+        item
+        for item in table_rows
+        if any(
+            term.lower() in {"mic", "pmic", "mic50", "mic80", "ic50", "ec50", "fic", "km", "vmax"}
+            for term in item["matched_terms"]
+        )
+    ]
+    if measurement_rows:
+        table_rows = measurement_rows
+    structures = [item for item in candidates if item["source_type"] == "chemical_structure_smiles"]
+    context = [
+        item
+        for item in candidates
+        if item["source_type"] not in {"table_row", "chemical_structure_image", "chemical_structure_smiles"}
+    ]
+
+    selected = [*context[:context_quota], *table_rows[:quota]]
+    anchor_pages = [item["page_number"] for item in selected if item["page_number"] is not None]
+    if anchor_pages:
+        structures.sort(
+            key=lambda item: (
+                min(abs(item["page_number"] - page) for page in anchor_pages)
+                if item["page_number"] is not None
+                else math.inf,
+                item["rank"],
+            )
+        )
+    selected.extend(structures[:quota])
+
+    selected_ids = {item["evidence_id"] for item in selected}
+    for item in candidates:
+        if len(selected) >= limit:
+            break
+        if item["evidence_id"] in selected_ids or item["source_type"] == "chemical_structure_image":
+            continue
+        selected.append(item)
+        selected_ids.add(item["evidence_id"])
+    selected.sort(key=lambda item: item["rank"])
+    return selected[:limit]
+
+
 def score_variant(variant: PromptVariant, evidence: tuple[EvidenceRow, ...]) -> dict[str, Any]:
     terms = variant.keywords[:48]
     scores = [evidence_score(row, terms) for row in evidence]
@@ -561,7 +615,12 @@ def matched_terms(text: str, terms: tuple[str, ...]) -> list[str]:
         clean = term.strip()
         if not clean:
             continue
-        if clean.lower() in lowered:
+        lowered_term = clean.lower()
+        if lowered_term.isalnum():
+            found = re.search(rf"(?<!\w){re.escape(lowered_term)}(?!\w)", lowered) is not None
+        else:
+            found = lowered_term in lowered
+        if found:
             matches.append(clean)
     return _ordered_unique(matches)
 
@@ -740,7 +799,47 @@ def _count_smiles(conn: sqlite3.Connection) -> int:
                 "SELECT COUNT(*) FROM structure_detections WHERE smiles IS NOT NULL AND trim(smiles) != ''"
             ).fetchone()[0]
         )
-    return evidence_count + detection_count
+    # A successful OCSR result is stored in both tables under the same
+    # detection id, so adding the counts would report every SMILES twice.
+    return evidence_count or detection_count
+
+
+def _write_final_tables(output_dir: Path, parsed_json: Any) -> None:
+    csv_path = output_dir / "final_table.csv"
+    markdown_path = output_dir / "final_table.md"
+    rows = parsed_json if isinstance(parsed_json, list) else [parsed_json]
+    rows = [row for row in rows if isinstance(row, dict)]
+    if not rows:
+        csv_path.unlink(missing_ok=True)
+        markdown_path.unlink(missing_ok=True)
+        return
+
+    fieldnames = _ordered_unique([key for row in rows for key in row])
+    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: _table_value(row.get(key)) for key in fieldnames})
+
+    header = "| " + " | ".join(_markdown_cell(field) for field in fieldnames) + " |"
+    separator = "| " + " | ".join("---" for _ in fieldnames) + " |"
+    body = [
+        "| " + " | ".join(_markdown_cell(_table_value(row.get(field))) for field in fieldnames) + " |"
+        for row in rows
+    ]
+    markdown_path.write_text("\n".join([header, separator, *body]) + "\n", encoding="utf-8")
+
+
+def _table_value(value: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    if value is None:
+        return ""
+    return value
+
+
+def _markdown_cell(value: Any) -> str:
+    return str(value).replace("|", r"\|").replace("\n", " ")
 
 
 def _first_row(conn: sqlite3.Connection, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Row | None:

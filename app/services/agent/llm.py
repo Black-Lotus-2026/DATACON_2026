@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import os
 import re
 import urllib.error
@@ -108,12 +110,35 @@ class ChatCompletionsClient:
         self.config = config
 
     def complete(self, *, system: str, user: str) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "model": self.config.model,
-            "messages": [
+        return self._complete_messages(
+            [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
-            ],
+            ]
+        )
+
+    def complete_with_images(
+        self,
+        *,
+        system: str,
+        user: str,
+        images: list[tuple[str, Path]],
+    ) -> dict[str, Any]:
+        content: list[dict[str, Any]] = [{"type": "text", "text": user}]
+        for label, image_path in images:
+            content.append({"type": "text", "text": f"Image label: {label}"})
+            content.append(_image_content_part(image_path))
+        return self._complete_messages(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": content},
+            ]
+        )
+
+    def _complete_messages(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": messages,
             "temperature": self.config.temperature,
             "max_tokens": self.config.max_tokens,
             "n": 1,
@@ -155,6 +180,28 @@ class ChatCompletionsClient:
             "parse_error": parse_error,
             "usage": result.get("usage"),
         }
+
+
+def _image_content_part(path: Path) -> dict[str, Any]:
+    resolved = path.expanduser().resolve()
+    if not resolved.exists():
+        raise LLMConfigurationError(f"Image file does not exist: {resolved}")
+    if not resolved.is_file():
+        raise LLMConfigurationError(f"Image path is not a file: {resolved}")
+    if resolved.stat().st_size > 20 * 1024 * 1024:
+        raise LLMConfigurationError(f"Image is larger than 20 MB: {resolved}")
+
+    mime_type = mimetypes.guess_type(resolved.name)[0] or "image/png"
+    if mime_type not in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
+        raise LLMConfigurationError(f"Unsupported image type {mime_type}: {resolved}")
+    encoded = base64.b64encode(resolved.read_bytes()).decode("ascii")
+    return {
+        "type": "image_url",
+        "image_url": {
+            "url": f"data:{mime_type};base64,{encoded}",
+            "detail": "high",
+        },
+    }
 
 
 def load_env_file(path: Path) -> bool:

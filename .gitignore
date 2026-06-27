@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .python-version
 .venv/
+.venv-ocsr/
 venv/
 env/
 .DS_Store
@@ -12,3 +13,5 @@ uploads/*
 !uploads/.gitkeep
 runs/*
 !runs/.gitkeep
+tmp/
+outputs/

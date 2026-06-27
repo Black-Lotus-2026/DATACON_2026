@@ -55,9 +55,20 @@ def run_visual_tasks(
             detections += result_count
             if result_count:
                 conn.execute("UPDATE visual_tasks SET status = ? WHERE task_id = ?", ("completed", task["task_id"]))
+                ocsr_status = "pending"
             else:
                 skipped += 1
                 conn.execute("UPDATE visual_tasks SET status = ? WHERE task_id = ?", ("skipped", task["task_id"]))
+                ocsr_status = "skipped"
+            conn.execute(
+                """
+                UPDATE visual_tasks
+                SET status = ?
+                WHERE task_type = 'ocsr'
+                  AND target_id = ?
+                """,
+                (ocsr_status, task["target_id"]),
+            )
 
         conn.commit()
         return {"processed": processed, "detections": detections, "skipped": skipped}
