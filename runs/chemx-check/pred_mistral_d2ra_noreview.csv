@@ -1,0 +1,73 @@
+compound_id,smiles,target_type,target_relation,target_value,target_units,bacteria,pdf
+3k,NOT_DETECTED,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+3k,NOT_DETECTED,MIC,=,16,mg mL−1,MRSA,d2ra06667j
+3l,NOT_DETECTED,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+3l,NOT_DETECTED,MIC,=,16,mg mL−1,MRSA,d2ra06667j
+4c,NOT_DETECTED,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+4c,NOT_DETECTED,MIC,=,16,mg mL−1,MRSA,d2ra06667j
+4c,NOT_DETECTED,MIC,=,16,mg mL−1,Escherichia coli,d2ra06667j
+4g,NOT_DETECTED,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+4g,NOT_DETECTED,MIC,=,16,mg mL−1,MRSA,d2ra06667j
+4j,NOT_DETECTED,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+4j,NOT_DETECTED,MIC,=,16,mg mL−1,MRSA,d2ra06667j
+1o,NOT_DETECTED,MIC,=,16,mg mL−1,MSSA,d2ra06667j
+1o,NOT_DETECTED,MIC,=,32,mg mL−1,MRSA,d2ra06667j
+2d,NOT_DETECTED,MIC,=,16,mg mL−1,Streptococcus faecalis,d2ra06667j
+2d,NOT_DETECTED,MIC,=,16,mg mL−1,MSSA,d2ra06667j
+2d,NOT_DETECTED,MIC,=,32,mg mL−1,MRSA,d2ra06667j
+2o,NOT_DETECTED,MIC,=,16,mg mL−1,Streptococcus faecalis,d2ra06667j
+2o,NOT_DETECTED,MIC,=,16,mg mL−1,MSSA,d2ra06667j
+2o,NOT_DETECTED,MIC,=,32,mg mL−1,MRSA,d2ra06667j
+3f,NOT_DETECTED,MIC,=,8,mg mL−1,MSSA,d2ra06667j
+3f,NOT_DETECTED,MIC,=,16,mg mL−1,MRSA,d2ra06667j
+3l,NOT_DETECTED,MIC,=,16,mg mL−1,Escherichia coli,d2ra06667j
+3l,NOT_DETECTED,MIC,=,16,mg mL−1,Streptococcus faecalis,d2ra06667j
+3l,NOT_DETECTED,MIC,=,8,mg mL−1,MSSA,d2ra06667j
+3l,NOT_DETECTED,MIC,=,16,mg mL−1,MRSA,d2ra06667j
+4g,NOT_DETECTED,MIC,=,8,mg mL−1,Streptococcus faecalis,d2ra06667j
+4g,NOT_DETECTED,MIC,=,8,mg mL−1,MSSA,d2ra06667j
+4g,NOT_DETECTED,MIC,=,16,mg mL−1,MRSA,d2ra06667j
+3g,NOT_DETECTED,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+3g,NOT_DETECTED,MIC,=,4,mg mL−1,MRSA,d2ra06667j
+3k,NOT_DETECTED,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+3k,NOT_DETECTED,MIC,=,4,mg mL−1,MRSA,d2ra06667j
+4c,NOT_DETECTED,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+4c,NOT_DETECTED,MIC,=,4,mg mL−1,MRSA,d2ra06667j
+4j,NOT_DETECTED,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+4j,NOT_DETECTED,MIC,=,4,mg mL−1,MRSA,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,4,mg mL−1,MRSA,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,8,mg mL−1,MSSA,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,8,mg mL−1,MRSA,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,4,mg mL−1,MRSA,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,8,mg mL−1,MSSA,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,8,mg mL−1,MRSA,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,64,mg mL−1,EC,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,128,mg mL−1,PA,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,64,mg mL−1,SF,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,4,mg mL−1,MRSA,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,16,mg mL−1,CA,d2ra06667j
+3k,Cc1ccc(Cl)c(N2C(=NC3=C2C=CC(=C3)[N+](=O)[O-])CC4=CC=CC=C4)c1,MIC,=,64,mg mL−1,AN,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,16,mg mL−1,EC,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,64,mg mL−1,PA,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,16,mg mL−1,SF,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,4,mg mL−1,MSSA,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,8,mg mL−1,MRSA,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,16,mg mL−1,CA,d2ra06667j
+4c,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(C)C=C3)CC4=CC=CC=C4)c1,MIC,=,32,mg mL−1,AN,d2ra06667j
+3l,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(Cl)C(Cl)=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,16,mg mL−1,EC,d2ra06667j
+3l,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(Cl)C(Cl)=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,256,mg mL−1,PA,d2ra06667j
+3l,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(Cl)C(Cl)=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,16,mg mL−1,SF,d2ra06667j
+3l,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(Cl)C(Cl)=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,8,mg mL−1,MSSA,d2ra06667j
+3l,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(Cl)C(Cl)=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,16,mg mL−1,MRSA,d2ra06667j
+3l,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(Cl)C(Cl)=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,32,mg mL−1,CA,d2ra06667j
+3l,Cc1ccc(Cl)c(N2C(=NC3=C2C=C(Cl)C(Cl)=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,32,mg mL−1,AN,d2ra06667j
+4j,Cc1ccc(Cl)c(N2C(=NC3=C2C=C([N+](=O)[O-])C=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,64,mg mL−1,EC,d2ra06667j
+4j,Cc1ccc(Cl)c(N2C(=NC3=C2C=C([N+](=O)[O-])C=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,256,mg mL−1,PA,d2ra06667j
+4j,Cc1ccc(Cl)c(N2C(=NC3=C2C=C([N+](=O)[O-])C=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,64,mg mL−1,SF,d2ra06667j
+4j,Cc1ccc(Cl)c(N2C(=NC3=C2C=C([N+](=O)[O-])C=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,8,mg mL−1,MSSA,d2ra06667j
+4j,Cc1ccc(Cl)c(N2C(=NC3=C2C=C([N+](=O)[O-])C=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,8,mg mL−1,MRSA,d2ra06667j
+4j,Cc1ccc(Cl)c(N2C(=NC3=C2C=C([N+](=O)[O-])C=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,32,mg mL−1,CA,d2ra06667j
+4j,Cc1ccc(Cl)c(N2C(=NC3=C2C=C([N+](=O)[O-])C=C3)CC4=CC=C(Cl)C=C4)c1,MIC,=,64,mg mL−1,AN,d2ra06667j

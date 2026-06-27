@@ -220,6 +220,14 @@ python -m datacon_agent.cli evaluate \
 против `0.349333` у baseline. Для официальной оценки нужно догрузить все
 доступные PDF/SI и прогнать тот же evaluator по полному article subset.
 
+Отдельная проверка на 4 скачанных ChemX Benzimidazoles PDF через Mistral
+зафиксирована в `docs/chemx_mistral_check.md`. Коротко: scraper-first
+`mistral-large-latest` с `--no-review` дал Macro-F1 `0.274310` против
+`0.295098` у baseline на той же подвыборке, а smoke-прогон с review-pass на
+`s13065-018-0479-1` дал `0.714286`. Полный batch с review-pass уперся в
+Mistral `429 Rate limit exceeded`, поэтому нужен retry/backoff перед следующим
+полным прогоном.
+
 Опционально можно прогонять тот же контур через SQLite evidence scraper:
 добавьте к `batch` и `review-csv` флаги `--use-scraper --scraper-dir
 runs/datacon_agent_scrapes`. На текущей 9-PDF Nanozymes подвыборке полный
