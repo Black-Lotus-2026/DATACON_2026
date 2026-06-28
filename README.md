@@ -251,6 +251,11 @@ python -m datacon_agent.cli batch \
 Mistral `429 Rate limit exceeded`, поэтому нужен retry/backoff перед следующим
 полным прогоном.
 
+Hackathon bench-run через текущий OpenAI-compatible endpoint зафиксирован в
+`docs/hackathon_bench_run.md`: Benzimidazoles на 4 PDF дал Macro-F1 `0.393453`
+против published baseline `0.217`, Synergy на 1 PDF дал `0.137931` против
+`0.080`, Co-crystals на 1 PDF дал `0.285714` против `0.296`.
+
 `EyeDrops` добавлен как отдельный домен (`smiles`, `name`, `perm (cm/s)`,
 `logP`). В локальном `ChemX/datasets/EyeDrops.csv` сейчас нет строк с
 `access=1`, поэтому автоматический `download-pdfs --domain eyedrops` не

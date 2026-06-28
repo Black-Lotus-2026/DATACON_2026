@@ -80,6 +80,54 @@ def test_full_pipeline_domain_mapping_covers_web_domains() -> None:
         assert domain_key in DOMAINS
 
 
+def test_metrics_payload_uses_completed_jobs_not_projected_scores(monkeypatch) -> None:
+    domain = next(item for item in jobs.CHEMX_DOMAINS if item["name"] == "Benzimidazoles")
+    monkeypatch.setattr(
+        jobs,
+        "JOBS",
+        {
+            "done-1": {
+                "id": "done-1",
+                "status": "completed",
+                "domain": domain,
+                "updated_at": 20,
+                "records": [{"object_id": "mol-1"}, {"object_id": "mol-2"}],
+                "metrics": {
+                    "macro_f1": 0.612,
+                    "record_count": 2,
+                },
+            },
+            "running-1": {
+                "id": "running-1",
+                "status": "running",
+                "domain": domain,
+                "updated_at": 30,
+                "records": [{"object_id": "mol-3"}],
+                "metrics": {
+                    "macro_f1": 0.999,
+                    "record_count": 1,
+                },
+            },
+        },
+    )
+
+    payload = jobs.metrics_payload()
+    benzimidazoles = next(item for item in payload["domains"] if item["name"] == "Benzimidazoles")
+    eyedrops = next(item for item in payload["domains"] if item["name"] == "EyeDrops")
+
+    assert payload["summary"]["completed_runs"] == 1
+    assert payload["summary"]["tracked_domains"] == 1
+    assert payload["summary"]["total_rows"] == 2
+    assert payload["summary"]["avg_current"] == 0.612
+    assert benzimidazoles["current"] == 0.612
+    assert benzimidazoles["projected"] == 0.612
+    assert benzimidazoles["record_count"] == 2
+    assert benzimidazoles["job_id"] == "done-1"
+    assert eyedrops["current"] is None
+    assert eyedrops["projected"] is None
+    assert eyedrops["status"] == "no completed runs"
+
+
 def test_records_from_llm_uses_submitted_router_config(monkeypatch) -> None:
     captured = {}
 

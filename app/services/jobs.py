@@ -394,36 +394,55 @@ def summarize_job(job: dict[str, Any], *, include_private: bool = False) -> dict
 
 
 def metrics_payload() -> dict[str, Any]:
-    rows = []
     completed = [job for job in JOBS.values() if job["status"] == "completed" and job.get("metrics")]
-    by_domain = {job["domain"]["name"]: job for job in completed}
+    by_domain: dict[str, dict[str, Any]] = {}
+    run_counts: dict[str, int] = {}
+    for job in sorted(completed, key=lambda item: item.get("updated_at") or item.get("created_at") or 0):
+        domain_name = job["domain"]["name"]
+        by_domain[domain_name] = job
+        run_counts[domain_name] = run_counts.get(domain_name, 0) + 1
 
+    rows = []
     for domain in CHEMX_DOMAINS:
         baseline = domain["baseline"]
         job = by_domain.get(domain["name"])
-        current = job["metrics"]["macro_f1"] if job else _projected_macro_f1(domain["name"], baseline)
+        metrics = job.get("metrics") if job else None
+        current = metrics.get("macro_f1") if metrics else None
+        record_count = int(metrics.get("record_count") or len(job.get("records") or [])) if metrics and job else 0
         rows.append(
             {
                 **domain,
+                "dataset_size": domain["size"],
+                "record_count": record_count,
+                "current": current,
                 "projected": current,
-                "delta": None if baseline is None else round(current - baseline, 3),
-                "status": "completed run" if job else ("no baseline" if baseline is None else "baseline"),
+                "delta": None if current is None or baseline is None else round(current - baseline, 3),
+                "status": "completed run" if job else "no completed runs",
                 "job_id": job["id"] if job else None,
+                "run_count": run_counts.get(domain["name"], 0),
             }
         )
 
-    tracked = [row for row in rows if row["baseline"] is not None]
-    avg_baseline = sum(row["baseline"] for row in tracked) / len(tracked)
-    avg_projected = sum(row["projected"] for row in tracked) / len(tracked)
+    completed_rows = [row for row in rows if row["current"] is not None]
+    comparable_rows = [row for row in completed_rows if row["baseline"] is not None]
+    avg_baseline = (
+        sum(row["baseline"] for row in comparable_rows) / len(comparable_rows) if comparable_rows else None
+    )
+    avg_current = sum(row["current"] for row in completed_rows) / len(completed_rows) if completed_rows else None
     return {
         "domains": rows,
         "summary": {
-            "tracked_domains": len(tracked),
+            "tracked_domains": len(completed_rows),
             "completed_runs": len(completed),
-            "total_rows": sum(row["size"] for row in rows),
-            "avg_baseline": round(avg_baseline, 3),
-            "avg_projected": round(avg_projected, 3),
-            "avg_delta": round(avg_projected - avg_baseline, 3),
+            "total_rows": sum(int((job.get("metrics") or {}).get("record_count") or len(job.get("records") or [])) for job in completed),
+            "avg_baseline": round(avg_baseline, 3) if avg_baseline is not None else None,
+            "avg_current": round(avg_current, 3) if avg_current is not None else None,
+            "avg_projected": round(avg_current, 3) if avg_current is not None else None,
+            "avg_delta": (
+                round(avg_current - avg_baseline, 3)
+                if avg_current is not None and avg_baseline is not None
+                else None
+            ),
         },
     }
 
@@ -1366,14 +1385,6 @@ def _rows_to_text(rows: list[dict[str, str]]) -> str:
     for row in rows[:80]:
         lines.append("; ".join(f"{key}: {value}" for key, value in row.items() if value))
     return "\n".join(lines)
-
-
-def _projected_macro_f1(domain_name: str, baseline: float | None) -> float:
-    rng = random.Random(domain_name)
-    if baseline is None:
-        return round(0.42 + rng.random() * 0.16, 3)
-    lift = 0.025 + rng.random() * 0.12
-    return round(min(0.82, baseline + lift), 3)
 
 
 def _first_present(row: dict[str, str], keys: list[str]) -> str:
