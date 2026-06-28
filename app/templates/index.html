@@ -6,8 +6,8 @@
 <section class="hero-grid">
   <div class="hero-copy">
     <p class="eyebrow">ChemX extraction workspace</p>
-    <h1>Загрузка статьи или датасета для химической экстракции</h1>
-    <p class="hero-text">PDF, CSV, TSV или текст проходят один и тот же контур: ingest, preprocessing, image evidence, extraction и оценка по Macro-F1.</p>
+    <h1>Загрузка PDF или ZIP-архива для химической экстракции</h1>
+    <p class="hero-text">PDF, ZIP с PDF, CSV, TSV или текст проходят один и тот же контур: ingest, preprocessing, image evidence, extraction и оценка по Macro-F1.</p>
     <div class="hero-actions">
       <a class="button button-primary" href="#upload-panel">Загрузить файл</a>
       <a class="button button-secondary" href="/metrics">Открыть метрики</a>
@@ -26,10 +26,10 @@
     </div>
 
     <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload dataset file">
-      <input id="dataset-file" name="dataset" type="file" accept=".pdf,.csv,.tsv,.zip,.txt,.md" hidden>
+      <input id="dataset-file" name="dataset" type="file" accept=".pdf,.zip,.csv,.tsv,.txt,.md" hidden>
       <div class="drop-icon">+</div>
-      <strong id="file-name">Выберите PDF, CSV, TSV, TXT, MD или ZIP</strong>
-      <span id="file-meta">ChemX article, table export, text source or packaged dataset</span>
+      <strong id="file-name">Выберите PDF или ZIP с PDF</strong>
+      <span id="file-meta">CSV, TSV, TXT and MD are also accepted for fixtures</span>
     </div>
 
     <label class="field-label" for="domain-select">Домен ChemX</label>
@@ -48,23 +48,91 @@
     <p class="form-state" id="upload-state"></p>
   </form>
 
-  <div class="domain-panel">
-    <div class="section-heading">
-      <p class="eyebrow">ChemX domains</p>
-      <h2>Покрытие задачи</h2>
-    </div>
-    <div class="domain-grid">
-      {% for domain in domains %}
-      <article class="domain-tile" data-domain="{{ domain.name }}">
+  <aside class="side-stack">
+    <div class="model-router-panel">
+      <div class="section-heading split-heading">
         <div>
-          <strong>{{ domain.name }}</strong>
-          <span>{{ domain.track }}</span>
+          <p class="eyebrow">Model router</p>
+          <h2>Настройки модели</h2>
         </div>
-        <em>{{ "{:,}".format(domain.size).replace(",", " ") }} rows</em>
-      </article>
-      {% endfor %}
+        <span class="router-badge">OpenAI-compatible</span>
+      </div>
+
+      <label class="field-label" for="model-router-url">Router URL</label>
+      <input
+        class="input"
+        id="model-router-url"
+        name="model_router_url"
+        form="upload-form"
+        type="text"
+        inputmode="url"
+        placeholder="https://api.vsegpt.ru/v1"
+        autocomplete="off"
+      >
+
+      <label class="field-label" for="model-api-key">API key</label>
+      <input
+        class="input"
+        id="model-api-key"
+        name="model_api_key"
+        form="upload-form"
+        type="password"
+        placeholder="sk-..."
+        autocomplete="off"
+      >
+
+      <div class="router-grid">
+        <div>
+          <label class="field-label" for="model-id">Model</label>
+          <input class="input" id="model-id" name="model" form="upload-form" type="text" value="gpt-4.1" autocomplete="off">
+        </div>
+        <div>
+          <label class="field-label" for="review-model-id">Review model</label>
+          <input class="input" id="review-model-id" name="review_model" form="upload-form" type="text" placeholder="optional" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="router-grid">
+        <div>
+          <label class="field-label" for="pages-per-window">Pages per pass</label>
+          <input class="input" id="pages-per-window" name="pages_per_window" form="upload-form" type="number" min="1" max="10" value="4">
+        </div>
+        <div>
+          <label class="field-label" for="max-pages">Max pages</label>
+          <input class="input" id="max-pages" name="max_pages" form="upload-form" type="number" min="0" max="500" value="0">
+        </div>
+      </div>
+
+      <div class="toggle-grid">
+        <label class="check-tile" for="send-images">
+          <input id="send-images" name="send_images" form="upload-form" type="checkbox" checked>
+          <span>Page images</span>
+        </label>
+        <label class="check-tile" for="review-pass">
+          <input id="review-pass" name="review_pass" form="upload-form" type="checkbox" checked>
+          <span>Review pass</span>
+        </label>
+      </div>
     </div>
-  </div>
+
+    <div class="domain-panel">
+      <div class="section-heading">
+        <p class="eyebrow">ChemX domains</p>
+        <h2>Покрытие задачи</h2>
+      </div>
+      <div class="domain-grid">
+        {% for domain in domains %}
+        <article class="domain-tile" data-domain="{{ domain.name }}">
+          <div>
+            <strong>{{ domain.name }}</strong>
+            <span>{{ domain.track }}</span>
+          </div>
+          <em>{{ "{:,}".format(domain.size).replace(",", " ") }} rows</em>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </aside>
 </section>
 {% endblock %}
 

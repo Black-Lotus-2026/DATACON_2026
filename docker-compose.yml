@@ -1,0 +1,16 @@
+services:
+  datacon-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        REQUIREMENTS: "${DOCKER_REQUIREMENTS:-requirements.txt}"
+    image: datacon-chemx:latest
+    environment:
+      PORT: "8000"
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./runs:/app/runs
+    restart: unless-stopped

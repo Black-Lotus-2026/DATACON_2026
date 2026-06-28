@@ -1,0 +1,8 @@
+,tp,fp,fn,precision,recall,f1
+compound_id,24.0,0.0,0.0,1.0,1.0,1.0
+smiles,0.0,24.0,24.0,0.0,0.0,0.0
+target_type,24.0,0.0,0.0,1.0,1.0,1.0
+target_relation,24.0,0.0,0.0,1.0,1.0,1.0
+target_value,24.0,0.0,0.0,1.0,1.0,1.0
+target_units,24.0,0.0,0.0,1.0,1.0,1.0
+bacteria,0.0,24.0,24.0,0.0,0.0,0.0

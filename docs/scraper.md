@@ -129,6 +129,71 @@ runs/<имя-запуска>/scrape.sqlite
 - `chemical_structure_image`
 - `chemical_structure_smiles`
 
+## Structured evidence agents
+
+После базового скрапера можно запустить локальный слой `datacon_agent`
+evidence-agents. Это не LLM-агенты, а воспроизводимые правила поверх SQLite,
+которые превращают сырые строки таблиц и SMILES-блоки в более удобные факты для
+финального ChemX-экстрактора.
+
+Главный поток:
+
+```text
+tables/table_rows
+  -> TablePlanner
+  -> TableMeasurementAgent
+  -> CompoundLinkingAgent
+  -> ConflictResolverAgent
+  -> ScaffoldResolverAgent
+  -> agent_* tables + evidence_blocks
+```
+
+`TablePlanner` строит план один раз на таблицу:
+
+- где находится столбец соединения (`compound_column_index`);
+- какие столбцы являются измерениями;
+- какой `target_type` у таблицы или столбца (`MIC`, `INHIBITION_ZONE`, `IC50`);
+- какие units следует использовать (`µg/mL`, `µmol mL−1`, `mm`);
+- какой организм соответствует столбцу (`S. aureus`, `E. coli`, ...).
+
+Например таблица вида:
+
+```text
+Compound | S. aureus | P. aeruginosa | E. coli | S. typhosa
+63a      | 28        | 26            | 21      | 19
+```
+
+после планирования превращается не в одну строку, а в четыре measurement facts:
+
+```text
+63a + Staphylococcus aureus -> INHIBITION_ZONE 28 mm
+63a + Pseudomonas aeruginosa -> INHIBITION_ZONE 26 mm
+63a + Escherichia coli -> INHIBITION_ZONE 21 mm
+63a + Salmonella typhosa -> INHIBITION_ZONE 19 mm
+```
+
+План сохраняется в `agent_table_measurements.metadata_json` в полях
+`table_plan` и `column_plan`. Это важно для отладки: можно понять, почему агент
+решил, что конкретный столбец является measurement-столбцом.
+
+Таблицы structured evidence layer:
+
+- `agent_table_measurements`: нормализованные измерения из таблиц.
+- `agent_compound_links`: связь `compound_id + measurement + SMILES`.
+- `agent_conflict_decisions`: выбор canonical record или `needs_review`.
+- `agent_scaffold_resolutions`: найденные scaffold/R-group случаи.
+
+Каждая запись также публикуется обратно в `evidence_blocks` с source type:
+
+- `agent_table_measurement`
+- `agent_compound_link`
+- `agent_conflict_decision`
+- `agent_scaffold_resolution`
+
+Так финальный `ChemExtractionAgent` видит не только сырой текст PDF, но и
+структурированный контекст, который уже связан со страницей, таблицей и исходной
+строкой.
+
 ## Команды запуска
 
 Базовый PDF-скрапер:

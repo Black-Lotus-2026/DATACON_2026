@@ -1,0 +1,25 @@
+compound_id,smiles,target_type,target_relation,target_value,target_units,bacteria,pdf
+4a,NOT_DETECTED,MIC,=,64,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+4a,NOT_DETECTED,MIC,=,128,µg/mL,Escherichia coli,s13065-018-0479-1
+4b,NOT_DETECTED,MIC,=,128,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+4b,NOT_DETECTED,MIC,=,128,µg/mL,Escherichia coli,s13065-018-0479-1
+4c,NOT_DETECTED,MIC,=,128,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+4c,NOT_DETECTED,MIC,=,64,µg/mL,Escherichia coli,s13065-018-0479-1
+4d,NOT_DETECTED,MIC,=,128,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+4d,NOT_DETECTED,MIC,=,64,µg/mL,Escherichia coli,s13065-018-0479-1
+4e,NOT_DETECTED,MIC,=,128,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+4e,NOT_DETECTED,MIC,=,64,µg/mL,Escherichia coli,s13065-018-0479-1
+4f,NOT_DETECTED,MIC,=,512,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+4f,NOT_DETECTED,MIC,=,256,µg/mL,Escherichia coli,s13065-018-0479-1
+6a,NOT_DETECTED,MIC,=,32,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+6a,NOT_DETECTED,MIC,=,64,µg/mL,Escherichia coli,s13065-018-0479-1
+6b,NOT_DETECTED,MIC,=,64,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+6b,NOT_DETECTED,MIC,=,64,µg/mL,Escherichia coli,s13065-018-0479-1
+6c,NOT_DETECTED,MIC,=,64,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+6c,NOT_DETECTED,MIC,=,32,µg/mL,Escherichia coli,s13065-018-0479-1
+6d,NOT_DETECTED,MIC,=,64,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+6d,NOT_DETECTED,MIC,=,32,µg/mL,Escherichia coli,s13065-018-0479-1
+6e,NOT_DETECTED,MIC,=,64,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+6e,NOT_DETECTED,MIC,=,32,µg/mL,Escherichia coli,s13065-018-0479-1
+6f,NOT_DETECTED,MIC,=,256,µg/mL,Staphylococcus aureus,s13065-018-0479-1
+6f,NOT_DETECTED,MIC,=,128,µg/mL,Escherichia coli,s13065-018-0479-1

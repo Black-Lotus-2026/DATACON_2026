@@ -37,8 +37,10 @@ https://github.com/ai-chem/ChemX/tree/main/LLM/data/prompts
 - `Cytotox` -> `cytotoxicity.py`
 - `SelTox` -> `seltox.py`
 
-В upstream-папке нет prompt-а для `EyeDrops`; если передать этот домен, агент
-запустит sniffing по всем доступным skills и добавит warning в отчёт.
+В upstream-папке ChemX prompt templates нет отдельного prompt-а для `EyeDrops`.
+Старый checker поэтому запускает sniffing по всем доступным skills и добавляет
+warning в отчёт. Основной `datacon_agent` поддерживает `eyedrops` отдельно
+через schema-driven домен с колонками `smiles`, `name`, `perm (cm/s)`, `logP`.
 
 ## Запуск от PDF
 
