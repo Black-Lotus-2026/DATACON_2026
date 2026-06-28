@@ -28,34 +28,7 @@ evaluator-compatible CLI, Docker-деплой и тесты.
 
 ## Архитектура
 
-```mermaid
-flowchart TD
-    U["User"] --> W["FastAPI Web UI"]
-    U --> C["datacon_agent CLI"]
-
-    W --> J["Job service"]
-    J --> UP["uploads/"]
-    J --> RUN["runs/"]
-    J --> SSE["SSE events"]
-
-    J --> MODE{"Extraction mode"}
-    MODE -->|PDF/ZIP + API key| FULL["Full scraper/evidence/LLM pipeline"]
-    MODE -->|API key fallback| DIRECT["Direct LLM extraction"]
-    MODE -->|No API key| LOCAL["Local heuristic extractor"]
-
-    C --> FULL
-    FULL --> SCR["PDF scraper"]
-    SCR --> SQL["scrape.sqlite"]
-    SQL --> VIS["Visual/OCSR tasks"]
-    SQL --> EA["Structured evidence agents"]
-    VIS --> EA
-    EA --> EX["ChemExtractionAgent"]
-    DIRECT --> EX
-    EX --> OUT["CSV/JSON records"]
-    LOCAL --> OUT
-    OUT --> MET["Macro-F1 metrics"]
-    MET --> W
-```
+![Архитектура ChemX Extractor](docs/assets/architecture.jpg)
 
 Подробная схема лежит в [`docs/system_architecture.md`](docs/system_architecture.md).
 
