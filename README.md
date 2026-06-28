@@ -298,22 +298,13 @@ DOCKER_REQUIREMENTS=requirements-web.txt docker compose build
 
 ## Финальные результаты
 
-Контрольный hackathon bench-run сохранен в
-[`docs/hackathon_bench_run.md`](docs/hackathon_bench_run.md).
+Финальная сводка Macro-F1 по ChemX-доменам:
 
-| Домен | PDF subset | Режим | Macro-F1 | Published baseline | Итог |
-| --- | ---: | --- | ---: | ---: | --- |
-| Benzimidazoles | 4 PDF | text, no review | `0.393453` | `0.217` | выше baseline |
-| Synergy | 1 PDF | vision + review | `0.137931` | `0.080` | выше baseline |
-| Co-crystals | 1 PDF | vision + review | `0.285714` | `0.296` | около baseline |
-
-Дополнительные проверки:
-
-- Nanozymes на 9 PDF: `0.615949` против `0.290701` у single-agent baseline на
-  той же подвыборке.
-- Nanozymes на 5 PDF после финальной нормализации: `0.625000` против
-  `0.349333` у baseline.
-- Benzimidazoles Mistral smoke с review-pass на одном PDF: `0.714286`.
+| Metric | EyeDrops | Benzimidazoles | Oxazolidinones | Co-crystals | Complexes | Nanozymes | Synergy | Nanomag | Cytotox | SelTox |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Baseline | - | `0.217` | `0.491` | `0.296` | `0.290` | `0.164` | `0.080` | `0.034` | `0.182` | `0.045` |
+| Current | - | `0.393` | - | `0.286` | `0.056` | `0.648` | `0.138` | `0.148` | `0.154` | `0.094` |
+| Delta | - | `+0.176` | - | `-0.010` | `-0.234` | `+0.484` | `+0.058` | `+0.114` | `-0.028` | `+0.049` |
 
 ## Тесты
 
