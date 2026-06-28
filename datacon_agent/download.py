@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -16,6 +17,9 @@ from datacon_agent.domains import NOT_DETECTED, DomainSpec
 ARTICLE_ID_COLUMNS_BY_DOMAIN: dict[str, tuple[str, ...]] = {
     "eyedrops": ("pdf", "PMID", "doi", "title"),
 }
+MANIFEST_COLUMNS = ["doi", "pdf", "status", "source_url", "supplementary_pdfs"]
+PDF_DOWNLOAD_TIMEOUT_SECONDS = 120.0
+PDF_REQUEST_TIMEOUT = (10, 20)
 
 
 @dataclass(frozen=True)
@@ -94,10 +98,20 @@ def download_open_access_pdfs(
     )
 
     rows: list[dict[str, Any]] = []
+    manifest_path = out_dir / "download_manifest.csv"
     for article in tqdm(articles, desc=f"Download {domain.key}"):
         target = out_dir / pdf_filename(domain, article.pdf_id)
         if target.exists() and not overwrite:
-            rows.append({"doi": article.doi, "pdf": target.name, "status": "exists", "source_url": ""})
+            rows.append(
+                {
+                    "doi": article.doi,
+                    "pdf": target.name,
+                    "status": "exists",
+                    "source_url": "",
+                    "supplementary_pdfs": 0,
+                }
+            )
+            write_manifest(rows, manifest_path)
             continue
 
         source_url = ""
@@ -128,12 +142,14 @@ def download_open_access_pdfs(
                 "supplementary_pdfs": supp_count,
             }
         )
+        write_manifest(rows, manifest_path)
 
-    manifest = pd.DataFrame(
-        rows,
-        columns=["doi", "pdf", "status", "source_url", "supplementary_pdfs"],
-    )
-    manifest.to_csv(out_dir / "download_manifest.csv", index=False)
+    return write_manifest(rows, manifest_path)
+
+
+def write_manifest(rows: list[dict[str, Any]], path: Path) -> pd.DataFrame:
+    manifest = pd.DataFrame(rows, columns=MANIFEST_COLUMNS)
+    manifest.to_csv(path, index=False)
     return manifest
 
 
@@ -266,8 +282,14 @@ def add_candidate(candidates: list[str], value: object) -> None:
 
 
 def try_download_pdf(session: requests.Session, url: str, target: Path) -> bool:
+    started_at = time.monotonic()
+
+    def timed_out() -> bool:
+        return time.monotonic() - started_at > PDF_DOWNLOAD_TIMEOUT_SECONDS
+
     try:
-        with session.get(url, timeout=60, stream=True, allow_redirects=True) as response:
+        target.unlink(missing_ok=True)
+        with session.get(url, timeout=PDF_REQUEST_TIMEOUT, stream=True, allow_redirects=True) as response:
             if not response.ok:
                 return False
             content_type = response.headers.get("content-type", "").lower()
@@ -275,6 +297,8 @@ def try_download_pdf(session: requests.Session, url: str, target: Path) -> bool:
             size = 0
             stream = response.iter_content(chunk_size=1024 * 128)
             for chunk in stream:
+                if timed_out():
+                    return False
                 if chunk:
                     chunks.append(chunk)
                     size += len(chunk)
@@ -287,6 +311,9 @@ def try_download_pdf(session: requests.Session, url: str, target: Path) -> bool:
             with target.open("wb") as file:
                 file.write(prefix)
                 for chunk in stream:
+                    if timed_out():
+                        target.unlink(missing_ok=True)
+                        return False
                     if chunk:
                         file.write(chunk)
             return target.stat().st_size > 1024
