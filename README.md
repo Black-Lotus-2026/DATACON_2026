@@ -12,7 +12,7 @@ FastAPI-приложение для финальной задачи DataCon'26: 
 - Отмена активного запуска.
 - Сохранение загруженных файлов в `uploads/`.
 - Сохранение отчётов и артефактов запусков в `runs/`.
-- Локальная эвристическая экстракция из CSV/TSV, текстовых файлов и PDF с selectable text.
+- Локальная эвристическая экстракция из CSV/TSV, текстовых файлов, PDF с selectable text и ZIP-архивов с PDF.
 
 ## Запуск
 
@@ -355,7 +355,9 @@ app/services/agent/skills/specialized/chemical_ocr/SKILL.md
 - `GET /` - страница загрузки.
 - `GET /realtime` - live pipeline.
 - `GET /metrics` - метрики ChemX.
-- `POST /api/upload` - загрузка файла, поля формы: `dataset`, `domain`.
+- `GET /api/docs` - Swagger UI для JSON API.
+- `GET /api/openapi.json` - OpenAPI schema.
+- `POST /api/upload` - загрузка файла, поля формы: `dataset`, `domain`, `model_router_url`, `model`, `review_model`, `pages_per_window`, `send_images`, `review_pass`, `max_pages`.
 - `POST /api/demo-job` - демо-запуск без файла.
 - `GET /api/jobs/{job_id}` - состояние запуска.
 - `GET /api/jobs/{job_id}/events` - real-time события.
@@ -370,9 +372,98 @@ app/services/agent/skills/specialized/chemical_ocr/SKILL.md
 
 - CSV/TSV нормализуются в ChemX-like записи.
 - PDF обрабатывается через `pypdf`; поддерживаются PDF с selectable text.
+- ZIP читается без распаковки на диск, из него берутся PDF-файлы, summary показывает число PDF и список обработанных документов.
 - TXT/MD проходят через regex-эвристики для SMILES, DOI и экспериментальных свойств.
-- ZIP сохраняется для подключения внешнего extractor.
+- `model_router_url`, `model` и review-настройки сохраняются в `job.model_config`, чтобы UI/API запускали проверку с тем же router-контекстом, что и Streamlit.
 
 Production-контур для ChemX-метрики вынесен в `datacon_agent`, чтобы UI-MVP
 оставался быстрым, а leaderboard-оценка считалась воспроизводимо через
 ChemX-compatible evaluator.
+
+## Docker и деплой
+
+По умолчанию Docker собирает полный web-образ с тяжелым PDF/scraper/LLM стеком:
+PyMuPDF, pdfplumber, pandas, RDKit, OpenAI-compatible client и evidence agents.
+
+Настройки LLM для web-запуска вводятся на сайте в блоке `Model router`: Router
+URL, API key, model и review-настройки отправляются вместе с конкретным запуском.
+Если API key указан и загружен PDF/ZIP с PDF, сервер запускает полный контур:
+SQLite scraper, table/figure evidence, heuristic visual stage, отдельные
+evidence agents из последнего коммита (`table_measurement`, `compound_linking`,
+`conflict_resolver`, `scaffold_resolver`), затем schema-driven LLM extractor и
+review pass. Если LLM недоступен или ключ не задан, web-пайплайн автоматически
+возвращается к локальной эвристической экстракции, чтобы демо не падало.
+
+API key не возвращается в `/api/jobs`, SSE и JSON export; наружу отдаётся только
+`api_key_configured`. Файл `.env` для web-интерфейса не обязателен: он нужен
+только для deploy-настроек вроде `SITE_ADDRESS` или для offline/CLI fallback.
+
+Локальная сборка:
+
+```bash
+docker compose build
+docker compose up -d
+curl http://127.0.0.1:8000/api/health
+```
+
+Приложение будет доступно на `http://127.0.0.1:8000`. Если нужен другой внешний
+порт, задайте `APP_PORT`, например:
+
+```bash
+APP_PORT=8080 docker compose up -d
+```
+
+Минимальный деплой на Ubuntu-сервер:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+```
+
+После повторного входа в SSH:
+
+```bash
+git clone <repo-url> DATACON_2026
+cd DATACON_2026
+mkdir -p uploads runs
+docker compose up -d --build
+docker compose logs -f datacon-web
+```
+
+Данные загрузок и отчётов хранятся вне образа в `uploads/` и `runs/`, поэтому
+перезапуск контейнера их не удаляет. Для обновления кода:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Быстрый публичный доступ без домена:
+
+```bash
+APP_PORT=80 docker compose up -d --build
+```
+
+После этого интерфейс будет доступен по `http://<server-ip>/`.
+
+Если есть домен и нужен HTTPS, пропишите DNS `A`-запись на IP сервера, добавьте
+в `.env`:
+
+```text
+SITE_ADDRESS=chemx.example.com
+```
+
+И запустите:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Caddy сам выпустит TLS-сертификат. Если нужно экстренно поднять только легкий
+demo UI без тяжелого scraper/agent стека, можно собрать lite-образ:
+
+```bash
+DOCKER_REQUIREMENTS=requirements-web.txt docker compose build
+```

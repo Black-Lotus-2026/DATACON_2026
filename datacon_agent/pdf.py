@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 
-import fitz
 from PIL import Image
 
 
@@ -47,6 +46,8 @@ def load_pdf(
     render_pages: bool = True,
     dpi: int = 160,
 ) -> DocumentContext:
+    import fitz
+
     path = Path(pdf_path)
     doc = fitz.open(path)
     pages: list[PageContext] = []
@@ -120,6 +121,8 @@ def cell_to_text(value: object) -> str:
 
 
 def render_page(page: fitz.Page, *, dpi: int) -> bytes:
+    import fitz
+
     zoom = dpi / 72
     matrix = fitz.Matrix(zoom, zoom)
     pixmap = page.get_pixmap(matrix=matrix, alpha=False)
