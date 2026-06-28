@@ -16,10 +16,14 @@ FastAPI-приложение для финальной задачи DataCon'26: 
 
 ## Запуск
 
+Рекомендуемая локальная версия Python: `3.10` или `3.11`. Docker-образ уже
+использует Python `3.10`.
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
@@ -28,6 +32,25 @@ uvicorn app.main:app --reload
 ```text
 http://127.0.0.1:8000
 ```
+
+Быстрые smoke-проверки после установки:
+
+```bash
+python -m datacon_agent.cli domains
+python -m pytest -q
+```
+
+Для LLM-прогонов через OpenAI-compatible endpoint заполните в `.env`:
+
+```text
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL=provider/model-slug
+```
+
+Если провайдер доступен только через локальный proxy, добавьте в `.env`
+`HTTPS_PROXY` и `HTTP_PROXY`, например `socks5h://127.0.0.1:<port>`. Если VPN
+работает как системный туннель, эти переменные обычно не нужны.
 
 ## Scraper MVP
 
@@ -209,8 +232,12 @@ python -m datacon_agent.cli review-csv \
   --review-context-chars 60000 \
   --passes 2
 
-find data/pdfs/nanozymes -maxdepth 1 -type f -name '*.pdf' \
-  -printf '%f\n' | sed 's/\.pdf$//' | sort > outputs/nanozymes_articles.txt
+mkdir -p outputs
+python - <<'PY'
+from pathlib import Path
+articles = sorted(path.stem for path in Path("data/pdfs/nanozymes").glob("*.pdf"))
+Path("outputs/nanozymes_articles.txt").write_text("\n".join(articles) + "\n")
+PY
 
 python -m datacon_agent.cli evaluate \
   --domain nanozymes \
@@ -218,6 +245,42 @@ python -m datacon_agent.cli evaluate \
   --articles outputs/nanozymes_articles.txt \
   --out outputs/nanozymes_metrics_gpt41.csv
 ```
+
+Минимальный стабильный режим для быстрого benchmark smoke без изображений и
+review-pass:
+
+```bash
+python -m datacon_agent.cli download-pdfs \
+  --domain nanozymes \
+  --out-dir data/pdfs/nanozymes \
+  --limit 5 \
+  --no-supplementary
+
+python -m datacon_agent.cli batch \
+  --domain nanozymes \
+  --pdf-dir data/pdfs/nanozymes \
+  --out outputs/nanozymes_text_noreview.csv \
+  --pages-per-window 5 \
+  --no-images \
+  --no-review
+
+mkdir -p outputs
+python - <<'PY'
+from pathlib import Path
+articles = sorted(path.stem for path in Path("data/pdfs/nanozymes").glob("*.pdf"))
+Path("outputs/nanozymes_articles.txt").write_text("\n".join(articles) + "\n")
+PY
+
+python -m datacon_agent.cli evaluate \
+  --domain nanozymes \
+  --pred outputs/nanozymes_text_noreview.csv \
+  --articles outputs/nanozymes_articles.txt \
+  --out outputs/nanozymes_metrics_text_noreview.csv
+```
+
+Если локальный клон `ChemX/` уже есть, можно добавить `--truth-csv
+ChemX/datasets/Nanozymes.csv`. Без `--truth-csv` evaluator загрузит truth dataset
+с Hugging Face.
 
 Для OpenRouter достаточно заменить base URL и передать конкретный model slug
 из OpenRouter:

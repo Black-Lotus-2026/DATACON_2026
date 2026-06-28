@@ -16,3 +16,7 @@ runs/*
 data/
 tmp/
 outputs/
+
+# Local reference clones for benchmark/debug runs.
+ChemX/
+DataCon26/
