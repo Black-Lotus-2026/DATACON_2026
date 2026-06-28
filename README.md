@@ -1,20 +1,79 @@
-# DataCon'26 ChemX FastAPI Web
+# DataCon'26 ChemX Extractor
 
-FastAPI-приложение для финальной задачи DataCon'26: загрузка PDF/CSV/TSV/TXT/MD/ZIP, real-time отображение пайплайна химической экстракции, просмотр результатов и страницы с метриками ChemX.
+Финальная версия проекта для задачи DataCon'26 ChemX: web-сервис и CLI-пайплайн
+для извлечения химических записей из научных PDF, ZIP-архивов, таблиц и
+текстовых файлов с последующей оценкой качества по ChemX-compatible Macro-F1.
 
-## Что внутри
+Проект завершен как end-to-end решение: есть FastAPI-интерфейс, JSON API,
+real-time мониторинг запусков, SQLite evidence layer, LLM extractor,
+evaluator-compatible CLI, Docker-деплой и тесты.
 
-- `FastAPI` backend с HTML-страницами и JSON API.
-- Главная страница для загрузки статьи или датасета ChemX.
-- Real-time страница на Server-Sent Events для этапов `ingest -> preprocessing -> image evidence -> extraction -> evaluation`.
-- Страница метрик с Macro-F1 baseline по доменам ChemX и результатами завершённых запусков.
-- Экспорт результатов в CSV и JSON.
-- Отмена активного запуска.
-- Сохранение загруженных файлов в `uploads/`.
-- Сохранение отчётов и артефактов запусков в `runs/`.
-- Локальная эвристическая экстракция из CSV/TSV, текстовых файлов, PDF с selectable text и ZIP-архивов с PDF.
+## Возможности
 
-## Запуск
+- Загрузка `PDF`, `ZIP` с PDF, `CSV`, `TSV`, `TXT` и `MD`.
+- Real-time pipeline через Server-Sent Events:
+  `ingest -> preprocess -> vision -> extract -> score`.
+- Поддержка 10 ChemX-доменов:
+  `EyeDrops`, `Benzimidazoles`, `Oxazolidinones`, `Co-crystals`, `Complexes`,
+  `Nanozymes`, `Synergy`, `Nanomag`, `Cytotox`, `SelTox`.
+- Полный PDF-контур для поддержанных доменов:
+  scraper -> SQLite evidence -> visual/structure evidence -> structured agents
+  -> schema-driven LLM extraction -> optional review pass.
+- Fallback без LLM: локальная эвристическая экстракция из таблиц, selectable
+  PDF text, TXT/MD и ZIP summary.
+- Экспорт результатов job в `CSV` и `JSON`.
+- Dashboard метрик с Macro-F1 и сравнением с опубликованными baseline.
+- CLI `datacon_agent` для batch extraction, review, download и evaluation.
+- Docker Compose деплой с optional HTTPS через Caddy.
+
+## Архитектура
+
+```mermaid
+flowchart TD
+    U["User"] --> W["FastAPI Web UI"]
+    U --> C["datacon_agent CLI"]
+
+    W --> J["Job service"]
+    J --> UP["uploads/"]
+    J --> RUN["runs/"]
+    J --> SSE["SSE events"]
+
+    J --> MODE{"Extraction mode"}
+    MODE -->|PDF/ZIP + API key| FULL["Full scraper/evidence/LLM pipeline"]
+    MODE -->|API key fallback| DIRECT["Direct LLM extraction"]
+    MODE -->|No API key| LOCAL["Local heuristic extractor"]
+
+    C --> FULL
+    FULL --> SCR["PDF scraper"]
+    SCR --> SQL["scrape.sqlite"]
+    SQL --> VIS["Visual/OCSR tasks"]
+    SQL --> EA["Structured evidence agents"]
+    VIS --> EA
+    EA --> EX["ChemExtractionAgent"]
+    DIRECT --> EX
+    EX --> OUT["CSV/JSON records"]
+    LOCAL --> OUT
+    OUT --> MET["Macro-F1 metrics"]
+    MET --> W
+```
+
+Подробная схема лежит в [`docs/system_architecture.md`](docs/system_architecture.md).
+
+## Структура проекта
+
+```text
+app/                         FastAPI web UI, API, job service, templates, static
+app/services/scraper/        PDF -> SQLite evidence scraper, visual queue, OCSR
+app/services/agent/          checker и chemical image agents
+datacon_agent/               production ChemX extractor, CLI, metrics, schemas
+docs/                        архитектура, scraper, agents, bench runs
+tests/                       pytest coverage для API, CLI-схем, metrics и agents
+uploads/                     сохраненные входные файлы, ignored
+runs/                        отчеты и артефакты запусков, ignored
+outputs/                     локальные CSV/metrics outputs, ignored
+```
+
+## Быстрый старт
 
 ```bash
 python3 -m venv .venv
@@ -29,20 +88,132 @@ uvicorn app.main:app --reload
 http://127.0.0.1:8000
 ```
 
-## Scraper MVP
+Полезные страницы:
 
-Первый слой scraper'а сохраняет PDF-разбор в SQLite: страницы, evidence-блоки,
-caption'ы, таблицы, строки таблиц и FTS5-индекс для текстового поиска.
-Подробная карта пайплайна лежит в `docs/scraper.md`.
+- `http://127.0.0.1:8000/` - загрузка файла и запуск extraction.
+- `http://127.0.0.1:8000/realtime` - live pipeline.
+- `http://127.0.0.1:8000/metrics` - ChemX metrics dashboard.
+- `http://127.0.0.1:8000/api/docs` - Swagger UI.
+
+Health check:
 
 ```bash
-source .venv/bin/activate
+curl http://127.0.0.1:8000/api/health
+```
+
+## Настройка LLM
+
+В web-интерфейсе router URL, API key, model, review model и window-настройки
+передаются для конкретного запуска. API key не возвращается в `/api/jobs`, SSE
+и exports; наружу попадает только флаг `api_key_configured`.
+
+Для CLI/offline сценариев можно создать `.env`:
+
+```bash
+cp .env.example .env
+```
+
+Пример OpenAI-compatible настроек:
+
+```text
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4.1
+OPENAI_REVIEW_MODEL=gpt-4.1
+```
+
+В CLI тот же endpoint можно передать явно через `--base-url`.
+
+Для VseGPT-совместимого старого checker-контура поддерживаются:
+
+```text
+VSEGPT_API_KEY=sk-...
+VSEGPT_BASE_URL=https://api.vsegpt.ru/v1
+VSEGPT_MODEL=openai/gpt-4o-mini
+```
+
+## CLI
+
+Список доменов:
+
+```bash
+python -m datacon_agent.cli domains
+```
+
+Схема structured output для домена:
+
+```bash
+python -m datacon_agent.cli schema --domain nanozymes
+```
+
+Скачать open-access PDF по ChemX-домену:
+
+```bash
+python -m datacon_agent.cli download-pdfs \
+  --domain nanozymes \
+  --out-dir data/pdfs/nanozymes \
+  --limit 20 \
+  --mailto you@example.com
+```
+
+Один PDF:
+
+```bash
+python -m datacon_agent.cli extract \
+  --domain benzimidazole \
+  --pdf data/pdfs/article.pdf \
+  --out outputs/article.csv \
+  --model gpt-4.1 \
+  --pages-per-window 4
+```
+
+Batch по директории PDF:
+
+```bash
+python -m datacon_agent.cli batch \
+  --domain nanozymes \
+  --pdf-dir data/pdfs/nanozymes \
+  --out outputs/nanozymes_candidates.csv \
+  --model gpt-4.1 \
+  --review-model gpt-4.1 \
+  --pages-per-window 5 \
+  --max-image-pages-per-window 3 \
+  --review-context-chars 60000
+```
+
+Review pass по уже созданному CSV:
+
+```bash
+python -m datacon_agent.cli review-csv \
+  --domain nanozymes \
+  --pred outputs/nanozymes_candidates.csv \
+  --pdf-dir data/pdfs/nanozymes \
+  --out outputs/nanozymes_reviewed.csv \
+  --passes 2
+```
+
+Evaluation:
+
+```bash
+python -m datacon_agent.cli evaluate \
+  --domain nanozymes \
+  --pred outputs/nanozymes_reviewed.csv \
+  --articles outputs/nanozymes_articles.txt \
+  --out outputs/nanozymes_metrics.csv
+```
+
+## Scraper и evidence layer
+
+Отдельный scraper сохраняет PDF-разбор в SQLite: страницы, evidence-блоки,
+caption'ы, таблицы, строки таблиц, figures, visual tasks и FTS5-индекс.
+
+```bash
 python -m app.services.scraper pdf-dataset/antibiotics-12-01220-v2.pdf \
   --out runs/scrape-antibiotics \
   --doc-id antibiotics_1220
 ```
 
-Главный артефакт:
+Основные артефакты:
 
 ```text
 runs/scrape-antibiotics/scrape.sqlite
@@ -51,226 +222,7 @@ runs/scrape-antibiotics/images/figures/*.png
 runs/scrape-antibiotics/visual_tasks.csv
 ```
 
-Быстрые проверки:
-
-```bash
-sqlite3 runs/scrape-antibiotics/scrape.sqlite \
-  "select source_type, count(*) from evidence_blocks group by source_type;"
-
-sqlite3 runs/scrape-antibiotics/scrape.sqlite \
-  "select page_number, label, substr(caption, 1, 100) from tables limit 10;"
-
-sqlite3 runs/scrape-antibiotics/scrape.sqlite \
-  "select source_type, substr(text, 1, 180) from evidence_fts where evidence_fts match 'antibio*' limit 5;"
-
-sqlite3 runs/scrape-antibiotics/scrape.sqlite \
-  "select priority, task_type, provider_hint, page_number, reason from visual_tasks order by priority desc limit 20;"
-```
-
-Structure detection executor:
-
-```bash
-python -m app.services.scraper.visual_executor \
-  runs/scrape-antibiotics/scrape.sqlite \
-  --provider heuristic
-```
-
-SOTA/optional DECIMER Segmentation provider:
-
-```bash
-conda create -n DECIMER_IMGSEG python=3.10
-conda activate DECIMER_IMGSEG
-pip install -r requirements-visual.txt
-python -m app.services.scraper.visual_executor \
-  runs/scrape-antibiotics/scrape.sqlite \
-  --provider decimer
-```
-
-Structure crops and debug overlays:
-
-```text
-runs/scrape-antibiotics/images/structures/**/structure_*.png
-runs/scrape-antibiotics/images/structures/**/_detections.png
-```
-
-OCSR executor over detected structure crops:
-
-```bash
-python -m app.services.scraper.ocsr_executor \
-  runs/scrape-antibiotics/scrape.sqlite \
-  --provider molscribe \
-  --device cpu \
-  --min-confidence 0.5
-```
-
-It writes recognized SMILES back to `structure_detections.smiles` and creates
-RAG-ready `chemical_structure_smiles` evidence blocks. Scheme fragments are
-kept with quality flags in metadata, so downstream extraction can treat
-wildcards/R-groups separately from complete molecules.
-
-```bash
-sqlite3 runs/scrape-antibiotics/scrape.sqlite \
-  "select parent_figure_id, smiles, image_path from structure_detections where smiles is not null limit 10;"
-```
-
-## Single-agent checker
-
-Для текущего MVP можно проверить упрощённый контур без второго агента:
-
-```text
-PDF -> scraper -> structured SQLite evidence -> checker agent -> reports
-```
-
-```bash
-python -m app.services.agent pdf-dataset/antibiotics-12-01220-v2.pdf \
-  --out runs/agent-antibiotics \
-  --domain Benzimidazoles \
-  --doc-id antibiotics_1220
-```
-
-Checker использует локальные prompt-skill templates из ChemX:
-
-```text
-app/services/agent/skills/chemx_prompts/
-```
-
-Для реального LLM-вызова через VseGPT создайте локальный `.env`:
-
-```bash
-cp .env.example .env
-```
-
-```text
-VSEGPT_API_KEY=sk-...
-VSEGPT_BASE_URL=https://api.vsegpt.ru/v1
-VSEGPT_MODEL=openai/gpt-4o-mini
-```
-
-И запустите агент с `--run-llm`:
-
-```bash
-python -m app.services.agent runs/agent-antibiotics/scrape/scrape.sqlite \
-  --out runs/agent-antibiotics/agent_check \
-  --domain Benzimidazoles \
-  --run-llm
-```
-
-Артефакты:
-
-```text
-runs/agent-antibiotics/scrape/scrape.sqlite
-runs/agent-antibiotics/agent_check/agent_report.json
-runs/agent-antibiotics/agent_check/agent_report.md
-runs/agent-antibiotics/agent_check/candidate_evidence.jsonl
-runs/agent-antibiotics/agent_check/llm_result.json
-runs/agent-antibiotics/agent_check/llm_raw.txt
-```
-
-Подробности: `docs/agent_checker.md`.
-
-## Evaluator-backed ChemX agent
-
-Добавлен отдельный контур `datacon_agent`: schema-driven LLM extractor для 10
-ChemX-доменов, OpenAlex downloader для open-access PDF/SI и evaluator-compatible
-подсчёт Macro-F1 по настоящему truth dataset, а не по projected UI-оценке.
-Поддерживаемые домены можно проверить командой:
-
-```bash
-python -m datacon_agent.cli domains
-```
-
-Запуск через OpenAI-compatible endpoint:
-
-```bash
-export OPENAI_API_KEY=...
-export OPENAI_BASE_URL=https://caila.io/api/adapters/openai
-
-python -m datacon_agent.cli download-pdfs \
-  --domain nanozymes \
-  --out-dir data/pdfs/nanozymes
-
-python -m datacon_agent.cli batch \
-  --domain nanozymes \
-  --pdf-dir data/pdfs/nanozymes \
-  --out outputs/nanozymes_gpt41_candidates.csv \
-  --model just-ai/openai-proxy/gpt-4.1 \
-  --review-model just-ai/openai-proxy/gpt-4.1 \
-  --pages-per-window 5 \
-  --max-image-pages-per-window 3 \
-  --review-context-chars 60000
-
-python -m datacon_agent.cli review-csv \
-  --domain nanozymes \
-  --pred outputs/nanozymes_gpt41_candidates.csv \
-  --pdf-dir data/pdfs/nanozymes \
-  --out outputs/nanozymes_gpt41_reviewed.csv \
-  --model just-ai/openai-proxy/gpt-4.1 \
-  --review-model just-ai/openai-proxy/gpt-4.1 \
-  --review-context-chars 60000 \
-  --passes 2
-
-find data/pdfs/nanozymes -maxdepth 1 -type f -name '*.pdf' \
-  -printf '%f\n' | sed 's/\.pdf$//' | sort > outputs/nanozymes_articles.txt
-
-python -m datacon_agent.cli evaluate \
-  --domain nanozymes \
-  --pred outputs/nanozymes_gpt41_reviewed.csv \
-  --articles outputs/nanozymes_articles.txt \
-  --out outputs/nanozymes_metrics_gpt41.csv
-```
-
-Для OpenRouter достаточно заменить base URL и передать конкретный model slug
-из OpenRouter:
-
-```bash
-export OPENAI_API_KEY=...
-export OPENAI_BASE_URL=https://openrouter.ai/api/v1
-export OPENROUTER_MODEL=provider/model-slug
-
-python -m datacon_agent.cli batch \
-  --domain benzimidazole \
-  --pdf-dir data/pdfs/benzimidazole \
-  --out outputs/benzimidazole_openrouter.csv
-```
-
-Если VPN работает как системный туннель, отдельный proxy env обычно не нужен.
-Если нужен локальный proxy, задайте `HTTPS_PROXY` и `HTTP_PROXY` в `.env`,
-например `socks5h://127.0.0.1:<port>` или `http://127.0.0.1:<port>`.
-
-Контрольный прогон на 9 скачанных Nanozymes PDF показал Macro-F1 `0.615949`
-против `0.290701` у single-agent baseline на той же подвыборке статей
-(`+0.325248`). На 5 PDF после финальной нормализации получено `0.625000`
-против `0.349333` у baseline. Для официальной оценки нужно догрузить все
-доступные PDF/SI и прогнать тот же evaluator по полному article subset.
-
-Отдельная проверка на 4 скачанных ChemX Benzimidazoles PDF через Mistral
-зафиксирована в `docs/chemx_mistral_check.md`. Коротко: scraper-first
-`mistral-large-latest` с `--no-review` дал Macro-F1 `0.274310` против
-`0.295098` у baseline на той же подвыборке, а smoke-прогон с review-pass на
-`s13065-018-0479-1` дал `0.714286`. Полный batch с review-pass уперся в
-Mistral `429 Rate limit exceeded`, поэтому нужен retry/backoff перед следующим
-полным прогоном.
-
-Hackathon bench-run через текущий OpenAI-compatible endpoint зафиксирован в
-`docs/hackathon_bench_run.md`: Benzimidazoles на 4 PDF дал Macro-F1 `0.393453`
-против published baseline `0.217`, Synergy на 1 PDF дал `0.137931` против
-`0.080`, Co-crystals на 1 PDF дал `0.285714` против `0.296`.
-
-`EyeDrops` добавлен как отдельный домен (`smiles`, `name`, `perm (cm/s)`,
-`logP`). В локальном `ChemX/datasets/EyeDrops.csv` сейчас нет строк с
-`access=1`, поэтому автоматический `download-pdfs --domain eyedrops` не
-скачивает PDF. Схема и evaluator при этом работают: если в truth нет `pdf`,
-article id синтезируется из `PMID`, затем `doi`, затем `title`.
-Карта доступности всех доменов и smoke-download зафиксированы в
-`docs/chemx_domain_sweep.md`.
-
-Опционально можно прогонять тот же контур через SQLite evidence scraper:
-добавьте к `batch` и `review-csv` флаги `--use-scraper --scraper-dir
-runs/datacon_agent_scrapes`. На текущей 9-PDF Nanozymes подвыборке полный
-scraper-first режим дал Macro-F1 `0.587566`, поэтому он оставлен как
-проверяемый evidence/RAG режим, а не как default для лучшего score.
-
-Связанный режим со старым visual/chemical контуром:
+Запуск CLI через scraper-first режим:
 
 ```bash
 python -m datacon_agent.cli extract \
@@ -278,16 +230,11 @@ python -m datacon_agent.cli extract \
   --pdf data/pdfs/article.pdf \
   --out outputs/article.csv \
   --use-scraper \
-  --run-visual --visual-provider decimer \
-  --run-ocsr --ocsr-device cpu --ocsr-min-confidence 0.5 \
-  --run-chemical-agents \
-  --run-evidence-agents \
-  --chemical-data-model openai/gpt-5.5 \
-  --chemical-model openai/gpt-5.5 \
-  --chemical-no-response-format
+  --run-visual \
+  --run-evidence-agents
 ```
 
-Для отладки уже подготовленного `scrape.sqlite` можно не перескрапливать PDF:
+Для уже готового `scrape.sqlite`:
 
 ```bash
 python -m datacon_agent.cli extract \
@@ -297,111 +244,44 @@ python -m datacon_agent.cli extract \
   --out outputs/article.csv
 ```
 
-`--run-evidence-agents` включает локальный structured fact layer:
-
-```text
-TablePlanner
-  -> per-table plan: compound column, measurement columns, target type, units
-TableMeasurementAgent
-  -> column-aware measurement facts from table rows
-CompoundLinkingAgent
-  -> compound_id + measurement + SMILES links
-ConflictResolverAgent
-  -> accepted / needs_review canonical linked records
-ScaffoldResolverAgent
-  -> scaffold/R-group cases that need substituent resolution
-```
-
-`TableMeasurementAgent` теперь применяет план таблицы к строкам, поэтому одна
-строка может давать несколько фактов. Например antimicrobial row
-`63a | 28 | 26 | 21 | 19` раскладывается на отдельные measurements для
-`S. aureus`, `P. aeruginosa`, `E. coli`, `S. typhosa`. План сохраняется в
-`agent_table_measurements.metadata_json` как `table_plan` и `column_plan`.
-
-Эти агенты пишут результаты в SQLite-таблицы `agent_*` и одновременно публикуют
-RAG-friendly `evidence_blocks`, которые затем читает финальный `datacon_agent`.
-
-## Multi-agent chemical image pipeline
-
-Для анализа научных схем и отдельного chemical OCR добавлен контур:
-
-```text
-scraper SQLite
-  -> DataImageAnalysisAgent
-  -> ChemicalOCRAgent
-  -> RDKit validation
-  -> JSON/CSV
-```
-
-Специализированные prompt skills:
-
-```text
-app/services/agent/skills/specialized/data_image_analysis/SKILL.md
-app/services/agent/skills/specialized/chemical_ocr/SKILL.md
-```
-
-Ограниченный тестовый запуск:
+Опциональный OCSR/DECIMER контур требует `requirements-visual.txt` и отдельного
+окружения:
 
 ```bash
-.venv-ocsr/bin/python -m app.services.agent.multi_agent_pipeline \
-  runs/agent-antibiotics/scrape/scrape.sqlite \
-  --out runs/agent-antibiotics/multi_agent \
-  --data-model openai/gpt-4o-mini \
-  --chemical-model openai/gpt-4o-mini \
-  --data-limit 1 \
-  --chemical-limit 3 \
-  --no-response-format
-```
+python -m app.services.scraper.visual_executor \
+  runs/scrape-antibiotics/scrape.sqlite \
+  --provider heuristic
 
-Подробности: `docs/multi_agent_chemical_pipeline.md`.
+python -m app.services.scraper.ocsr_executor \
+  runs/scrape-antibiotics/scrape.sqlite \
+  --provider molscribe \
+  --device cpu \
+  --min-confidence 0.5
+```
 
 ## API
 
-- `GET /` - страница загрузки.
-- `GET /realtime` - live pipeline.
-- `GET /metrics` - метрики ChemX.
-- `GET /api/docs` - Swagger UI для JSON API.
-- `GET /api/openapi.json` - OpenAPI schema.
-- `POST /api/upload` - загрузка файла, поля формы: `dataset`, `domain`, `model_router_url`, `model`, `review_model`, `pages_per_window`, `send_images`, `review_pass`, `max_pages`.
-- `POST /api/demo-job` - демо-запуск без файла.
-- `GET /api/jobs/{job_id}` - состояние запуска.
-- `GET /api/jobs/{job_id}/events` - real-time события.
-- `POST /api/jobs/{job_id}/cancel` - отмена активного запуска.
-- `GET /api/jobs/{job_id}/export.csv` - экспорт извлечённых записей.
-- `GET /api/jobs/{job_id}/export.json` - экспорт полного отчёта.
-- `GET /api/metrics` - агрегированные метрики.
+| Endpoint | Назначение |
+| --- | --- |
+| `GET /api/health` | readiness check |
+| `GET /api/domains` | список ChemX-доменов |
+| `GET /api/metrics` | агрегированные Macro-F1 метрики |
+| `GET /api/jobs` | список запусков |
+| `POST /api/upload` | загрузка файла и создание job |
+| `POST /api/demo-job` | demo job без файла |
+| `GET /api/jobs/{job_id}` | состояние job |
+| `GET /api/jobs/{job_id}/events` | SSE stream |
+| `POST /api/jobs/{job_id}/cancel` | отмена активной job |
+| `GET /api/jobs/{job_id}/export.csv` | экспорт CSV |
+| `GET /api/jobs/{job_id}/export.json` | экспорт JSON |
 
-## Экстракция
+Ограничения upload из web/API:
 
-В `app/services/jobs.py` уже есть локальный extractor:
+- максимальный размер файла: `50 MB`;
+- ZIP: до `12` PDF и до `120 MB` распакованного размера;
+- разрешенные расширения: `.pdf`, `.csv`, `.tsv`, `.zip`, `.txt`, `.md`.
 
-- CSV/TSV нормализуются в ChemX-like записи.
-- PDF обрабатывается через `pypdf`; поддерживаются PDF с selectable text.
-- ZIP читается без распаковки на диск, из него берутся PDF-файлы, summary показывает число PDF и список обработанных документов.
-- TXT/MD проходят через regex-эвристики для SMILES, DOI и экспериментальных свойств.
-- `model_router_url`, `model` и review-настройки сохраняются в `job.model_config`, чтобы UI/API запускали проверку с тем же router-контекстом, что и Streamlit.
-
-Production-контур для ChemX-метрики вынесен в `datacon_agent`, чтобы UI-MVP
-оставался быстрым, а leaderboard-оценка считалась воспроизводимо через
-ChemX-compatible evaluator.
-
-## Docker и деплой
-
-По умолчанию Docker собирает полный web-образ с тяжелым PDF/scraper/LLM стеком:
-PyMuPDF, pdfplumber, pandas, RDKit, OpenAI-compatible client и evidence agents.
-
-Настройки LLM для web-запуска вводятся на сайте в блоке `Model router`: Router
-URL, API key, model и review-настройки отправляются вместе с конкретным запуском.
-Если API key указан и загружен PDF/ZIP с PDF, сервер запускает полный контур:
-SQLite scraper, table/figure evidence, heuristic visual stage, отдельные
-evidence agents из последнего коммита (`table_measurement`, `compound_linking`,
-`conflict_resolver`, `scaffold_resolver`), затем schema-driven LLM extractor и
-review pass. Если LLM недоступен или ключ не задан, web-пайплайн автоматически
-возвращается к локальной эвристической экстракции, чтобы демо не падало.
-
-API key не возвращается в `/api/jobs`, SSE и JSON export; наружу отдаётся только
-`api_key_configured`. Файл `.env` для web-интерфейса не обязателен: он нужен
-только для deploy-настроек вроде `SITE_ADDRESS` или для offline/CLI fallback.
+## Docker
 
 Локальная сборка:
 
@@ -411,23 +291,13 @@ docker compose up -d
 curl http://127.0.0.1:8000/api/health
 ```
 
-Приложение будет доступно на `http://127.0.0.1:8000`. Если нужен другой внешний
-порт, задайте `APP_PORT`, например:
+Другой внешний порт:
 
 ```bash
 APP_PORT=8080 docker compose up -d
 ```
 
-Минимальный деплой на Ubuntu-сервер:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl git
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker "$USER"
-```
-
-После повторного входа в SSH:
+Минимальный деплой на сервер:
 
 ```bash
 git clone <repo-url> DATACON_2026
@@ -437,38 +307,73 @@ docker compose up -d --build
 docker compose logs -f datacon-web
 ```
 
-Данные загрузок и отчётов хранятся вне образа в `uploads/` и `runs/`, поэтому
-перезапуск контейнера их не удаляет. Для обновления кода:
-
-```bash
-git pull
-docker compose up -d --build
-```
-
-Быстрый публичный доступ без домена:
-
-```bash
-APP_PORT=80 docker compose up -d --build
-```
-
-После этого интерфейс будет доступен по `http://<server-ip>/`.
-
-Если есть домен и нужен HTTPS, пропишите DNS `A`-запись на IP сервера, добавьте
-в `.env`:
+HTTPS через Caddy:
 
 ```text
 SITE_ADDRESS=chemx.example.com
 ```
 
-И запустите:
-
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-Caddy сам выпустит TLS-сертификат. Если нужно экстренно поднять только легкий
-demo UI без тяжелого scraper/agent стека, можно собрать lite-образ:
+Для легкого demo UI без тяжелого PDF/scraper/agent стека:
 
 ```bash
 DOCKER_REQUIREMENTS=requirements-web.txt docker compose build
 ```
+
+## Финальные результаты
+
+Контрольный hackathon bench-run сохранен в
+[`docs/hackathon_bench_run.md`](docs/hackathon_bench_run.md).
+
+| Домен | PDF subset | Режим | Macro-F1 | Published baseline | Итог |
+| --- | ---: | --- | ---: | ---: | --- |
+| Benzimidazoles | 4 PDF | text, no review | `0.393453` | `0.217` | выше baseline |
+| Synergy | 1 PDF | vision + review | `0.137931` | `0.080` | выше baseline |
+| Co-crystals | 1 PDF | vision + review | `0.285714` | `0.296` | около baseline |
+
+Дополнительные проверки:
+
+- Nanozymes на 9 PDF: `0.615949` против `0.290701` у single-agent baseline на
+  той же подвыборке.
+- Nanozymes на 5 PDF после финальной нормализации: `0.625000` против
+  `0.349333` у baseline.
+- Benzimidazoles Mistral smoke с review-pass на одном PDF: `0.714286`.
+
+## Тесты
+
+```bash
+source .venv/bin/activate
+python -m pytest
+```
+
+Покрываются:
+
+- приватность model config и API key;
+- web/domain mapping и metrics payload;
+- datacon schema, normalization и Macro-F1 evaluator;
+- scraper context и импорт evidence;
+- structured evidence agents;
+- specialized chemical image agents.
+
+## Документация
+
+- [`docs/system_architecture.md`](docs/system_architecture.md) - полная схема системы.
+- [`docs/scraper.md`](docs/scraper.md) - PDF scraper и SQLite evidence model.
+- [`docs/agent_checker.md`](docs/agent_checker.md) - single-agent checker.
+- [`docs/multi_agent_chemical_pipeline.md`](docs/multi_agent_chemical_pipeline.md) - image/chemical OCR agents.
+- [`docs/chemx_domain_sweep.md`](docs/chemx_domain_sweep.md) - доступность доменов и PDF.
+- [`docs/chemx_mistral_check.md`](docs/chemx_mistral_check.md) - Mistral проверка.
+- [`docs/hackathon_bench_run.md`](docs/hackathon_bench_run.md) - финальный bench-run.
+
+## Примечания
+
+- `uploads/`, `runs/`, `outputs/`, `.env` и локальные датасеты не должны
+  попадать в git.
+- Для production-запуска рекомендуется полный `requirements.txt`; для web-demo
+  без тяжелых зависимостей можно использовать `requirements-web.txt`.
+- Если CLI запускается не из `.venv`, убедитесь, что установлен `PyMuPDF`
+  (`fitz`), иначе команды `datacon_agent` не смогут импортировать PDF/downloader
+  модуль.
