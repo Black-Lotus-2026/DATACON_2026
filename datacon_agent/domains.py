@@ -92,6 +92,33 @@ DOMAINS: dict[str, DomainSpec] = {
         ),
         smiles_fields=("SMILES_drug", "SMILES_coformer"),
     ),
+    "eyedrops": DomainSpec(
+        key="eyedrops",
+        title="EyeDrops",
+        hf_dataset="ai-chem/EyeDrops",
+        task=(
+            "Extract ophthalmic drug or small-molecule corneal permeability records. "
+            "Keep each compound as a separate row with the reported compound name, SMILES, "
+            "corneal permeability perm (cm/s), and logP/lipophilicity when available."
+        ),
+        fields=(
+            FieldSpec("smiles", "string", "Full SMILES for the ophthalmic compound."),
+            FieldSpec("name", "string", "Compound or drug name exactly as reported."),
+            FieldSpec(
+                "perm (cm/s)",
+                "number",
+                "Corneal permeability value in cm/s or log permeability as reported.",
+            ),
+            FieldSpec("logP", "number", "Reported logP/lipophilicity value."),
+        ),
+        numeric_fields=("perm (cm/s)", "logP"),
+        smiles_fields=("smiles",),
+        guidance=(
+            "Do not convert between raw permeability and log permeability unless the article explicitly gives the conversion.",
+            "Prefer values from tables of corneal permeability, epithelial permeability, or ophthalmic absorption experiments.",
+            "When several permeability measurements are reported for the same compound, keep distinct experimental records as separate rows.",
+        ),
+    ),
     "complexes": DomainSpec(
         key="complexes",
         title="Complexes",
@@ -389,6 +416,18 @@ ALIASES: dict[str, dict[str, str]] = {
     },
     "complexes": {
         "target_value": "target",
+    },
+    "eyedrops": {
+        "SMILES": "smiles",
+        "compound": "name",
+        "compound_name": "name",
+        "drug": "name",
+        "permeability": "perm (cm/s)",
+        "perm": "perm (cm/s)",
+        "perm_cm_s": "perm (cm/s)",
+        "corneal_permeability": "perm (cm/s)",
+        "log_p": "logP",
+        "logp": "logP",
     },
 }
 

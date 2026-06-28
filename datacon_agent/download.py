@@ -11,7 +11,11 @@ import pandas as pd
 import requests
 from tqdm import tqdm
 
-from datacon_agent.domains import DomainSpec
+from datacon_agent.domains import NOT_DETECTED, DomainSpec
+
+ARTICLE_ID_COLUMNS_BY_DOMAIN: dict[str, tuple[str, ...]] = {
+    "eyedrops": ("pdf", "PMID", "doi", "title"),
+}
 
 
 @dataclass(frozen=True)
@@ -27,12 +31,43 @@ def load_open_access_articles(domain: DomainSpec) -> list[ArticleRef]:
         raise RuntimeError("Install with `uv sync --extra eval` to download ChemX PDFs.") from exc
 
     frame = load_dataset(domain.hf_dataset)["train"].to_pandas()
-    frame = frame.loc[frame["access"] == 1, ["doi", "pdf"]].dropna().drop_duplicates()
-    return [
-        ArticleRef(doi=str(row.doi), pdf_id=str(row.pdf))
-        for row in frame.itertuples(index=False)
-        if str(row.doi).strip() and str(row.pdf).strip()
-    ]
+    if "access" in frame.columns:
+        access_mask = frame["access"].astype(str).str.strip().isin({"1", "1.0", "true", "True"})
+        frame = frame.loc[access_mask].copy()
+    if frame.empty or "doi" not in frame.columns:
+        return []
+
+    rows: list[ArticleRef] = []
+    seen: set[tuple[str, str]] = set()
+    for _, row in frame.iterrows():
+        doi = clean_text(row.get("doi"))
+        pdf_id = article_id_for_download(domain, row)
+        if doi == NOT_DETECTED or pdf_id == NOT_DETECTED:
+            continue
+        key = (doi, pdf_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(ArticleRef(doi=doi, pdf_id=pdf_id))
+    return rows
+
+
+def clean_text(value: Any) -> str:
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "null", NOT_DETECTED.lower()}:
+        return NOT_DETECTED
+    return text
+
+
+def article_id_for_download(domain: DomainSpec, row: pd.Series) -> str:
+    candidates = ARTICLE_ID_COLUMNS_BY_DOMAIN.get(domain.key, ("pdf",))
+    for column in candidates:
+        if column not in row.index:
+            continue
+        value = clean_text(row.get(column))
+        if value != NOT_DETECTED:
+            return value
+    return NOT_DETECTED
 
 
 def download_open_access_pdfs(
@@ -94,7 +129,10 @@ def download_open_access_pdfs(
             }
         )
 
-    manifest = pd.DataFrame(rows)
+    manifest = pd.DataFrame(
+        rows,
+        columns=["doi", "pdf", "status", "source_url", "supplementary_pdfs"],
+    )
     manifest.to_csv(out_dir / "download_manifest.csv", index=False)
     return manifest
 

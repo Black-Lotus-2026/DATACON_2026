@@ -170,9 +170,14 @@ runs/agent-antibiotics/agent_check/llm_raw.txt
 
 ## Evaluator-backed ChemX agent
 
-Добавлен отдельный контур `datacon_agent`: schema-driven LLM extractor для ChemX
-доменов, OpenAlex downloader для open-access PDF/SI и evaluator-compatible
+Добавлен отдельный контур `datacon_agent`: schema-driven LLM extractor для 10
+ChemX-доменов, OpenAlex downloader для open-access PDF/SI и evaluator-compatible
 подсчёт Macro-F1 по настоящему truth dataset, а не по projected UI-оценке.
+Поддерживаемые домены можно проверить командой:
+
+```bash
+python -m datacon_agent.cli domains
+```
 
 Запуск через OpenAI-compatible endpoint:
 
@@ -214,6 +219,24 @@ python -m datacon_agent.cli evaluate \
   --out outputs/nanozymes_metrics_gpt41.csv
 ```
 
+Для OpenRouter достаточно заменить base URL и передать конкретный model slug
+из OpenRouter:
+
+```bash
+export OPENAI_API_KEY=...
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENROUTER_MODEL=provider/model-slug
+
+python -m datacon_agent.cli batch \
+  --domain benzimidazole \
+  --pdf-dir data/pdfs/benzimidazole \
+  --out outputs/benzimidazole_openrouter.csv
+```
+
+Если VPN работает как системный туннель, отдельный proxy env обычно не нужен.
+Если нужен локальный proxy, задайте `HTTPS_PROXY` и `HTTP_PROXY` в `.env`,
+например `socks5h://127.0.0.1:<port>` или `http://127.0.0.1:<port>`.
+
 Контрольный прогон на 9 скачанных Nanozymes PDF показал Macro-F1 `0.615949`
 против `0.290701` у single-agent baseline на той же подвыборке статей
 (`+0.325248`). На 5 PDF после финальной нормализации получено `0.625000`
@@ -227,6 +250,14 @@ python -m datacon_agent.cli evaluate \
 `s13065-018-0479-1` дал `0.714286`. Полный batch с review-pass уперся в
 Mistral `429 Rate limit exceeded`, поэтому нужен retry/backoff перед следующим
 полным прогоном.
+
+`EyeDrops` добавлен как отдельный домен (`smiles`, `name`, `perm (cm/s)`,
+`logP`). В локальном `ChemX/datasets/EyeDrops.csv` сейчас нет строк с
+`access=1`, поэтому автоматический `download-pdfs --domain eyedrops` не
+скачивает PDF. Схема и evaluator при этом работают: если в truth нет `pdf`,
+article id синтезируется из `PMID`, затем `doi`, затем `title`.
+Карта доступности всех доменов и smoke-download зафиксированы в
+`docs/chemx_domain_sweep.md`.
 
 Опционально можно прогонять тот же контур через SQLite evidence scraper:
 добавьте к `batch` и `review-csv` флаги `--use-scraper --scraper-dir

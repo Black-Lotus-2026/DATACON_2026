@@ -9,6 +9,10 @@ import pandas as pd
 from datacon_agent.domains import NOT_DETECTED, DomainSpec
 from datacon_agent.normalize import pdf_identifier
 
+ARTICLE_ID_COLUMNS_BY_DOMAIN: dict[str, tuple[str, ...]] = {
+    "eyedrops": ("pdf", "PMID", "doi", "title"),
+}
+
 
 def convert_comma(value: object) -> str:
     try:
@@ -32,6 +36,34 @@ def canonicalize_smiles(value: object) -> object:
     if mol is None:
         return value
     return Chem.MolToSmiles(mol)
+
+
+def clean_article_id(value: object) -> str:
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "null", NOT_DETECTED.lower()}:
+        return NOT_DETECTED
+    return text
+
+
+def ensure_article_id_column(domain: DomainSpec, frame: pd.DataFrame) -> pd.DataFrame:
+    if "pdf" in frame.columns and domain.key not in ARTICLE_ID_COLUMNS_BY_DOMAIN:
+        return frame
+
+    candidates = ARTICLE_ID_COLUMNS_BY_DOMAIN.get(domain.key, ("pdf",))
+    available = [column for column in candidates if column in frame.columns]
+    if not available:
+        frame["pdf"] = NOT_DETECTED
+        return frame
+
+    def row_article_id(row: pd.Series) -> str:
+        for column in available:
+            value = clean_article_id(row.get(column))
+            if value != NOT_DETECTED:
+                return pdf_identifier(domain, value)
+        return NOT_DETECTED
+
+    frame["pdf"] = frame.apply(row_article_id, axis=1)
+    return frame
 
 
 def prepare_truth(domain: DomainSpec, *, truth_csv: str | Path | None = None) -> pd.DataFrame:
@@ -61,7 +93,10 @@ def prepare_truth(domain: DomainSpec, *, truth_csv: str | Path | None = None) ->
             frame[column] = frame[column].apply(canonicalize_smiles)
 
     if "access" in frame.columns:
-        frame = frame.loc[frame["access"] == 1]
+        access_mask = frame["access"].astype(str).str.strip().isin({"1", "1.0", "true", "True"})
+        if access_mask.any():
+            frame = frame.loc[access_mask]
+    frame = ensure_article_id_column(domain, frame)
     frame = frame.fillna(NOT_DETECTED)
     return frame
 

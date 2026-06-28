@@ -1,8 +1,8 @@
 import pandas as pd
 
 from datacon_agent.batch import rows_for_pdf
-from datacon_agent.domains import get_domain
-from datacon_agent.metrics import calc_column_metrics
+from datacon_agent.domains import DOMAINS, get_domain
+from datacon_agent.metrics import calc_column_metrics, prepare_truth
 
 
 def test_column_metrics_use_multiset_counts() -> None:
@@ -30,3 +30,35 @@ def test_rows_for_pdf_keeps_dotted_article_ids() -> None:
     assert len(rows) == 1
     assert rows[0]["formula"] == "LaNiO3"
     assert rows[0]["activity"] == "NOT_DETECTED"
+
+
+def test_eyedrops_domain_is_registered() -> None:
+    domain = get_domain("eyedrops")
+
+    assert "eyedrops" in DOMAINS
+    assert domain.hf_dataset == "ai-chem/EyeDrops"
+    assert domain.columns == ["smiles", "name", "perm (cm/s)", "logP"]
+
+
+def test_eyedrops_truth_uses_pmid_as_article_id(tmp_path) -> None:
+    truth_path = tmp_path / "eyedrops.csv"
+    pd.DataFrame(
+        [
+            {
+                "smiles": "CCO",
+                "name": "ethanol",
+                "perm (cm/s)": "-5,2",
+                "logP": "-0,3",
+                "doi": "",
+                "PMID": "123456",
+                "title": "Corneal permeability test",
+                "access": "0",
+            }
+        ]
+    ).to_csv(truth_path, index=False)
+
+    frame = prepare_truth(get_domain("eyedrops"), truth_csv=truth_path)
+
+    assert frame.loc[0, "pdf"] == "123456"
+    assert frame.loc[0, "perm (cm/s)"] == "-5.2"
+    assert frame.loc[0, "logP"] == "-0.3"

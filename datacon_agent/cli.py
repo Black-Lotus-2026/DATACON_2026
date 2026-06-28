@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -85,8 +86,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def add_agent_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--domain", required=True, choices=sorted(DOMAINS))
-    parser.add_argument("--model", default="gpt-4.1")
-    parser.add_argument("--review-model")
+    parser.add_argument(
+        "--model",
+        default=os.getenv("OPENAI_MODEL") or os.getenv("OPENROUTER_MODEL") or "gpt-4.1",
+    )
+    parser.add_argument(
+        "--review-model",
+        default=os.getenv("OPENAI_REVIEW_MODEL") or os.getenv("OPENROUTER_REVIEW_MODEL"),
+    )
     parser.add_argument("--base-url", help="OpenAI-compatible API base URL")
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--pages-per-window", type=int, default=4)
@@ -307,7 +314,10 @@ def cmd_download(args: argparse.Namespace) -> None:
         mailto=args.mailto,
         include_supplementary=not args.no_supplementary,
     )
-    print(manifest["status"].value_counts().to_string())
+    if manifest.empty:
+        print("No open-access articles found/downloaded.")
+    else:
+        print(manifest["status"].value_counts().to_string())
     print(f"Wrote manifest to {Path(args.out_dir) / 'download_manifest.csv'}")
 
 
